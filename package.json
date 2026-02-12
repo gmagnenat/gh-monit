@@ -7,7 +7,9 @@
     "gh-monit": "dist/index.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:dashboard && npm run build:cli",
+    "build:cli": "tsup",
+    "build:dashboard": "cd dashboard && npm install && npm run build",
     "dev": "tsx src/index.ts",
     "lint": "tsc --noEmit",
     "test": "echo \"No tests yet\""
