@@ -2,6 +2,92 @@
 
 export type SeverityCounts = Record<string, number>;
 
+// --- Sorting types and helpers ---
+
+export type RepoSortOption = 'name' | 'critical' | 'total';
+
+/**
+ * Sort repos by the given option.
+ * - 'name': alphabetical by repo name (A-Z)
+ * - 'critical': most critical first, then high, then total alerts
+ * - 'total': most alerts first, then critical as tiebreaker
+ */
+export function sortRepos(
+  repos: RepoSummary[],
+  option: RepoSortOption
+): RepoSummary[] {
+  const sorted = [...repos];
+
+  switch (option) {
+    case 'name':
+      sorted.sort((a, b) => a.repo.localeCompare(b.repo));
+      break;
+
+    case 'critical':
+      sorted.sort((a, b) => {
+        const aCrit = a.severityCounts.critical ?? 0;
+        const bCrit = b.severityCounts.critical ?? 0;
+        if (bCrit !== aCrit) return bCrit - aCrit;
+
+        const aHigh = a.severityCounts.high ?? 0;
+        const bHigh = b.severityCounts.high ?? 0;
+        if (bHigh !== aHigh) return bHigh - aHigh;
+
+        return b.totalAlerts - a.totalAlerts;
+      });
+      break;
+
+    case 'total':
+      sorted.sort((a, b) => {
+        if (b.totalAlerts !== a.totalAlerts) {
+          return b.totalAlerts - a.totalAlerts;
+        }
+        const aCrit = a.severityCounts.critical ?? 0;
+        const bCrit = b.severityCounts.critical ?? 0;
+        return bCrit - aCrit;
+      });
+      break;
+  }
+
+  return sorted;
+}
+
+// --- Filtering types and helpers ---
+
+/** Filter repos by name (case-insensitive substring match). */
+export function filterReposByName(
+  repos: RepoSummary[],
+  query: string
+): RepoSummary[] {
+  if (!query.trim()) return repos;
+  const lower = query.toLowerCase();
+  return repos.filter((r) => r.repo.toLowerCase().includes(lower));
+}
+
+export type SeverityFilter = {
+  critical: boolean;
+  high: boolean;
+  medium: boolean;
+  low: boolean;
+};
+
+/** Filter repos to only those with alerts matching enabled severity levels. */
+export function filterReposBySeverity(
+  repos: RepoSummary[],
+  filter: SeverityFilter
+): RepoSummary[] {
+  const anyActive = Object.values(filter).some(Boolean);
+  if (!anyActive) return repos; // no filter = show all
+
+  return repos.filter((r) => {
+    if (filter.critical && (r.severityCounts.critical ?? 0) > 0) return true;
+    if (filter.high && (r.severityCounts.high ?? 0) > 0) return true;
+    if (filter.medium && (r.severityCounts.medium ?? 0) > 0) return true;
+    if (filter.low && (r.severityCounts.low ?? 0) > 0) return true;
+    return false;
+  });
+}
+
 export type RepoSummary = {
   repo: string;
   lastSync: string;
@@ -28,6 +114,11 @@ export type Alert = {
   dismissedAt: string | null;
   fixedAt: string | null;
   htmlUrl: string | null;
+  ghsaId: string | null;
+  cveId: string | null;
+  advisorySummary: string | null;
+  cvssScore: number | null;
+  patchedVersion: string | null;
 };
 
 export type RepoAlertsResponse = {
@@ -85,4 +176,132 @@ export function refreshRepo(
     `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/refresh`,
     { method: 'POST' }
   );
+}
+
+// --- Bulk refresh ---
+
+export type BulkRefreshResponse = {
+  refreshed: number;
+  total: number;
+  results: { repo: string; success: boolean }[];
+};
+
+/** Refresh all tracked repos from GitHub in a single request. */
+export function refreshAllRepos(): Promise<BulkRefreshResponse> {
+  return request<BulkRefreshResponse>('/api/repos/refresh-all', {
+    method: 'POST',
+  });
+}
+
+// --- History analytics types ---
+
+export type TrendPoint = {
+  day: string;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+};
+
+export type MttrMetric = {
+  repo: string;
+  severity: string;
+  avgDays: number;
+  resolvedCount: number;
+};
+
+export type AlertTimelineEntry = {
+  alertNumber: number;
+  state: string;
+  severity: string;
+  recordedAt: string;
+};
+
+export type SlaViolation = {
+  repo: string;
+  alertNumber: number;
+  severity: string;
+  packageName: string | null;
+  htmlUrl: string | null;
+  firstSeen: string;
+  openDays: number;
+  slaLimitDays: number;
+  overdue: boolean;
+};
+
+// --- History analytics fetchers ---
+
+/** Daily trend data: open alert counts grouped by severity. */
+export function fetchTrends(repo?: string | null): Promise<TrendPoint[]> {
+  const params = repo ? `?repo=${encodeURIComponent(repo)}` : '';
+  return request<TrendPoint[]>(`/api/history/trends${params}`);
+}
+
+/** MTTR metrics: average remediation time per repo and severity. */
+export function fetchMttr(repo?: string | null): Promise<MttrMetric[]> {
+  const params = repo ? `?repo=${encodeURIComponent(repo)}` : '';
+  return request<MttrMetric[]>(`/api/history/mttr${params}`);
+}
+
+/** Per-alert state transitions for a given repo. */
+export function fetchAlertHistory(
+  owner: string,
+  name: string
+): Promise<AlertTimelineEntry[]> {
+  return request<AlertTimelineEntry[]>(
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/history`
+  );
+}
+
+/** SLA violations: open alerts exceeding time thresholds. */
+export function fetchSlaViolations(): Promise<SlaViolation[]> {
+  return request<SlaViolation[]>('/api/history/sla');
+}
+
+// --- Cross-repo analytics types ---
+
+export type VulnerabilityGroup = {
+  ghsaId: string;
+  cveId: string | null;
+  severity: string;
+  summary: string | null;
+  cvssScore: number | null;
+  patchedVersion: string | null;
+  affectedRepos: number;
+  totalAlerts: number;
+  repos: string[];
+};
+
+export type DependencyGroup = {
+  packageName: string;
+  ecosystem: string | null;
+  totalAlerts: number;
+  affectedRepos: number;
+  criticalCount: number;
+  highCount: number;
+  repos: string[];
+};
+
+export type EcosystemBreakdown = {
+  ecosystem: string;
+  totalAlerts: number;
+  affectedRepos: number;
+  uniquePackages: number;
+};
+
+// --- Cross-repo analytics fetchers ---
+
+/** Vulnerability groups: advisories grouped by GHSA ID across all repos. */
+export function fetchVulnerabilities(): Promise<VulnerabilityGroup[]> {
+  return request<VulnerabilityGroup[]>('/api/analytics/vulnerabilities');
+}
+
+/** Dependency landscape: packages ranked by risk across all repos. */
+export function fetchDependencies(): Promise<DependencyGroup[]> {
+  return request<DependencyGroup[]>('/api/analytics/dependencies');
+}
+
+/** Ecosystem breakdown: alert distribution by ecosystem. */
+export function fetchEcosystems(): Promise<EcosystemBreakdown[]> {
+  return request<EcosystemBreakdown[]>('/api/analytics/ecosystems');
 }

@@ -8,6 +8,7 @@ import {
   fetchRepoAlerts,
   fetchRepos,
   fetchSummary,
+  refreshAllRepos,
   refreshRepo,
 } from '../api/client';
 
@@ -21,6 +22,7 @@ type DashboardState = {
 type RepoLoadingState = {
   refreshing: Set<string>;
   loadingAlerts: Set<string>;
+  bulkRefreshing: boolean;
 };
 
 const POLL_INTERVAL_MS = 60_000;
@@ -41,6 +43,7 @@ export function useDashboard() {
   const [repoLoading, setRepoLoading] = useState<RepoLoadingState>({
     refreshing: new Set(),
     loadingAlerts: new Set(),
+    bulkRefreshing: false,
   });
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
@@ -96,6 +99,29 @@ export function useDashboard() {
     [selectedRepo, loadDashboard]
   );
 
+  /** Refresh all tracked repos from GitHub. */
+  const handleRefreshAll = useCallback(async () => {
+    setRepoLoading((prev) => ({ ...prev, bulkRefreshing: true }));
+
+    try {
+      await refreshAllRepos();
+      // Reload dashboard to get updated summary + repo list
+      await loadDashboard();
+      // If a repo is selected, refresh its alerts too
+      if (selectedRepo) {
+        const [owner, name] = selectedRepo.split('/');
+        if (owner && name) {
+          const result = await fetchRepoAlerts(owner, name);
+          setRepoAlerts(result);
+        }
+      }
+    } catch {
+      // Errors are surfaced by the server; silently continue
+    } finally {
+      setRepoLoading((prev) => ({ ...prev, bulkRefreshing: false }));
+    }
+  }, [loadDashboard, selectedRepo]);
+
   /** Select a repo and fetch its alerts. Pass null to deselect. */
   const handleSelectRepo = useCallback(async (repoFullName: string | null) => {
     setSelectedRepo(repoFullName);
@@ -142,9 +168,11 @@ export function useDashboard() {
     ...state,
     selectedRepo,
     repoAlerts,
+    bulkRefreshing: repoLoading.bulkRefreshing,
     isRefreshing: (repo: string) => repoLoading.refreshing.has(repo),
     isLoadingAlerts: (repo: string) => repoLoading.loadingAlerts.has(repo),
     refreshRepo: handleRefreshRepo,
+    refreshAll: handleRefreshAll,
     selectRepo: handleSelectRepo,
     reload: loadDashboard,
   } as const;

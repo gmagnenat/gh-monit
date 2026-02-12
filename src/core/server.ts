@@ -2,7 +2,18 @@ import { Hono } from 'hono';
 import type Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAllRepoSummaries, getRepoAlerts, saveAlerts } from './db.js';
+import {
+  getAlertTimeline,
+  getAllRepoSummaries,
+  getDependencyLandscape,
+  getEcosystemBreakdown,
+  getMttrMetrics,
+  getRepoAlerts,
+  getSlaViolations,
+  getTrendData,
+  getVulnerabilityGroups,
+  saveAlerts,
+} from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts } from './github.js';
 import type { SeverityCounts } from '../types.js';
@@ -81,6 +92,89 @@ export function createServer(
 
     const updated = getRepoAlerts(db, fullName);
     return c.json(updated);
+  });
+
+  /** Bulk refresh all tracked repos from GitHub. */
+  app.post('/api/repos/refresh-all', async (c) => {
+    const repos = getAllRepoSummaries(db);
+    const results: { repo: string; success: boolean }[] = [];
+
+    for (const { repo } of repos) {
+      const [owner, name] = repo.split('/');
+      try {
+        const raw = await fetchDependabotAlerts({
+          owner,
+          name,
+          fullName: repo,
+        });
+        if (raw) {
+          const alerts = normalizeAlerts(repo, raw);
+          saveAlerts(db, repo, alerts, new Date().toISOString());
+          results.push({ repo, success: true });
+        } else {
+          results.push({ repo, success: false });
+        }
+      } catch {
+        results.push({ repo, success: false });
+      }
+    }
+
+    return c.json({
+      refreshed: results.filter((r) => r.success).length,
+      total: repos.length,
+      results,
+    });
+  });
+
+  // --- History analytics routes ---
+
+  /** Trend data: daily open alert counts grouped by severity. */
+  app.get('/api/history/trends', (c) => {
+    const repo = c.req.query('repo') || null;
+    const data = getTrendData(db, repo);
+    return c.json(data);
+  });
+
+  /** MTTR metrics: average remediation time per repo and severity. */
+  app.get('/api/history/mttr', (c) => {
+    const repo = c.req.query('repo') || null;
+    const data = getMttrMetrics(db, repo);
+    return c.json(data);
+  });
+
+  /** Per-alert state transitions timeline for a repo. */
+  app.get('/api/repos/:owner/:name/history', (c) => {
+    const owner = c.req.param('owner');
+    const name = c.req.param('name');
+    const fullName = `${owner}/${name}`;
+    const data = getAlertTimeline(db, fullName);
+    return c.json(data);
+  });
+
+  /** SLA violations: open alerts exceeding time thresholds. */
+  app.get('/api/history/sla', (c) => {
+    const data = getSlaViolations(db);
+    return c.json(data);
+  });
+
+  // --- Cross-repo analytics routes ---
+
+  /** Vulnerability groups: advisories grouped by GHSA ID across all repos. */
+  app.get('/api/analytics/vulnerabilities', (c) => {
+    const data = getVulnerabilityGroups(db);
+    return c.json(data);
+  });
+
+  /** Dependency landscape: packages ranked by risk across all repos. */
+  app.get('/api/analytics/dependencies', (c) => {
+    const data = getDependencyLandscape(db);
+    return c.json(data);
+  });
+
+  /** Ecosystem breakdown: alert distribution by ecosystem. */
+  app.get('/api/analytics/ecosystems', (c) => {
+    const data = getEcosystemBreakdown(db);
+    return c.json(data);
   });
 
   // --- Static file serving with SPA fallback ---

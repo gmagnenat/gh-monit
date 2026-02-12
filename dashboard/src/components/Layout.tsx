@@ -5,10 +5,16 @@ type LayoutProps = {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   children: ReactNode;
+  headerRight?: ReactNode;
 };
 
 /** Top navigation bar with title and theme toggle. Wraps page content. */
-export function Layout({ theme, onToggleTheme, children }: LayoutProps) {
+export function Layout({
+  theme,
+  onToggleTheme,
+  children,
+  headerRight,
+}: LayoutProps) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/80">
@@ -30,7 +36,10 @@ export function Layout({ theme, onToggleTheme, children }: LayoutProps) {
               gh-monit
             </h1>
           </div>
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <div className="flex items-center gap-3">
+            {headerRight}
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">

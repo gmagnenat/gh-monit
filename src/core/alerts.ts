@@ -12,6 +12,9 @@ export function normalizeAlerts(
       alert?.security_vulnerability?.severity ??
       "unknown";
 
+    const cvssRaw = alert?.security_advisory?.cvss?.score ?? null;
+    const cvssScore = typeof cvssRaw === 'number' ? cvssRaw : null;
+
     return {
       repo,
       alertNumber: Number(alert?.number ?? 0),
@@ -25,6 +28,12 @@ export function normalizeAlerts(
       dismissedAt: alert?.dismissed_at ?? null,
       fixedAt: alert?.fixed_at ?? null,
       htmlUrl: alert?.html_url ?? null,
+      ghsaId: alert?.security_advisory?.ghsa_id ?? null,
+      cveId: alert?.security_advisory?.cve_id ?? null,
+      advisorySummary: alert?.security_advisory?.summary ?? null,
+      cvssScore,
+      patchedVersion:
+        alert?.security_vulnerability?.first_patched_version?.identifier ?? null,
       rawJson: JSON.stringify(alert),
     };
   });

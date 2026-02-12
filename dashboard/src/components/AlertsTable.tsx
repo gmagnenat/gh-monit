@@ -12,6 +12,24 @@ const SEVERITY_ORDER: Record<string, number> = {
 type SortField = 'severity' | 'package' | 'ecosystem' | 'state' | 'created';
 type SortDir = 'asc' | 'desc';
 
+/** Format an ISO date as a relative time string (e.g. "2d ago"). */
+function formatRelativeTime(isoDate: string | null): string {
+  if (!isoDate) return '—';
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
 type AlertsTableProps = {
   alerts: Alert[];
   repoFullName: string;
@@ -24,8 +42,9 @@ export function AlertsTable({
   repoFullName,
   isLoading,
 }: AlertsTableProps) {
-  const [sortField, setSortField] = useState<SortField>('severity');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  // Default to newest alerts first
+  const [sortField, setSortField] = useState<SortField>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -157,10 +176,11 @@ export function AlertsTable({
                   <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
                     {alert.state}
                   </td>
-                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
-                    {alert.createdAt
-                      ? new Date(alert.createdAt).toLocaleDateString()
-                      : '—'}
+                  <td
+                    className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400"
+                    title={alert.createdAt ?? undefined}
+                  >
+                    {formatRelativeTime(alert.createdAt)}
                   </td>
                   <td className="px-4 py-2">
                     {alert.htmlUrl ? (
