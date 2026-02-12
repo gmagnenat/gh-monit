@@ -10,31 +10,31 @@ todos:
     status: completed
   - id: server
     content: Create src/core/server.ts with Hono API routes and static file serving
-    status: pending
+    status: completed
   - id: cli-command
     content: Create src/cli/dashboard.ts and register in src/index.ts
-    status: pending
+    status: completed
   - id: dashboard-scaffold
-    content: Scaffold dashboard/ directory with Vite + React + Tailwind config
-    status: pending
+    content: Scaffold dashboard/ directory with Vite + React + Tailwind v4 config
+    status: completed
   - id: dashboard-api-client
     content: Create dashboard/src/api/client.ts typed API client
-    status: pending
+    status: completed
   - id: dashboard-hooks
     content: Create useTheme and useDashboard hooks
-    status: pending
+    status: completed
   - id: dashboard-components
     content: Build all dashboard components (Layout, SummaryCards, RepoGrid, RepoCard, AlertsTable, SeverityBadge, ThemeToggle)
-    status: pending
+    status: completed
   - id: dashboard-app
     content: Wire up App.tsx with routing and state management
-    status: pending
+    status: completed
   - id: build-scripts
     content: Update build scripts and .gitignore for dashboard integration
-    status: pending
+    status: completed
   - id: test-e2e
     content: "Manual end-to-end test: build, run `gh-monit dashboard`, verify UI"
-    status: pending
+    status: completed
 isProject: false
 ---
 
