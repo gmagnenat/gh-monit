@@ -1,0 +1,33 @@
+{
+  "name": "gh-monit",
+  "version": "1.0.0",
+  "description": "CLI to fetch Dependabot alerts per repo",
+  "main": "dist/index.js",
+  "bin": {
+    "gh-monit": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "lint": "tsc --noEmit",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [],
+  "author": "Gwenaël Magnenat <gwenael.magnenat@marvelous.digital> (https://marvelous.digital/)",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "execa": "^9.6.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.2.3",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
