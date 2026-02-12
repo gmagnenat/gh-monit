@@ -2,7 +2,8 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { NormalizedAlert } from "../types.js";
+import type { NormalizedAlert, RepoSummary } from "../types.js";
+import { sortAlerts } from "./alerts.js";
 
 export const DEFAULT_DB_PATH = path.join(
   os.homedir(),
@@ -193,4 +194,66 @@ export function saveAlerts(
   });
 
   transaction();
+}
+
+/**
+ * Returns all tracked repos with their severity counts and last sync time.
+ * Single query joins repo_sync with alerts grouped by repo + severity,
+ * then pivots rows into RepoSummary objects in code.
+ */
+export function getAllRepoSummaries(db: Database.Database): RepoSummary[] {
+  const rows = db
+    .prepare(
+      [
+        "SELECT rs.repo, rs.last_sync, a.severity, COUNT(*) AS count",
+        "FROM repo_sync rs",
+        "LEFT JOIN alerts a ON a.repo = rs.repo",
+        "GROUP BY rs.repo, a.severity",
+        "ORDER BY rs.repo",
+      ].join(" ")
+    )
+    .all() as Array<{
+    repo: string;
+    last_sync: string;
+    severity: string | null;
+    count: number;
+  }>;
+
+  const repoMap = new Map<string, RepoSummary>();
+
+  for (const row of rows) {
+    let summary = repoMap.get(row.repo);
+    if (!summary) {
+      summary = {
+        repo: row.repo,
+        lastSync: row.last_sync,
+        severityCounts: {},
+        totalAlerts: 0,
+      };
+      repoMap.set(row.repo, summary);
+    }
+
+    if (row.severity) {
+      const key = row.severity.toLowerCase();
+      summary.severityCounts[key] = row.count;
+      summary.totalAlerts += row.count;
+    }
+  }
+
+  return [...repoMap.values()];
+}
+
+/**
+ * Returns sorted alerts for a given repo from the cache.
+ * Convenience wrapper around getCachedAlerts + sortAlerts.
+ */
+export function getRepoAlerts(
+  db: Database.Database,
+  repo: string
+): { alerts: NormalizedAlert[]; lastSync: string | null } {
+  const cached = getCachedAlerts(db, repo);
+  return {
+    alerts: sortAlerts(cached.alerts),
+    lastSync: cached.lastSync,
+  };
 }

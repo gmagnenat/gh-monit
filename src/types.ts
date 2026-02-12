@@ -28,3 +28,10 @@ export type RepoAlertsResult = {
 };
 
 export type SeverityCounts = Record<string, number>;
+
+export type RepoSummary = {
+  repo: string;
+  lastSync: string;
+  severityCounts: SeverityCounts;
+  totalAlerts: number;
+};
