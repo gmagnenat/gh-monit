@@ -1,11 +1,7 @@
 import type { RepoSummary } from '../api/client';
-
-const SEVERITY_BARS: { key: string; color: string }[] = [
-  { key: 'critical', color: 'bg-red-500 dark:bg-red-400' },
-  { key: 'high', color: 'bg-orange-500 dark:bg-orange-400' },
-  { key: 'medium', color: 'bg-yellow-500 dark:bg-yellow-400' },
-  { key: 'low', color: 'bg-blue-500 dark:bg-blue-400' },
-];
+import { formatRelativeTime } from '../utils/date';
+import { parseRepo } from '../utils/repo';
+import { SEVERITIES, SEVERITY_BAR } from '../utils/severity';
 
 type RepoCardProps = {
   repo: RepoSummary;
@@ -15,19 +11,6 @@ type RepoCardProps = {
   onRefresh: (owner: string, name: string) => void;
 };
 
-/** Formats a timestamp as a relative time string (e.g. "2 min ago"). */
-function formatRelativeTime(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 /** Per-repo card with severity breakdown bar, sync time, and refresh button. */
 export function RepoCard({
   repo,
@@ -36,7 +19,7 @@ export function RepoCard({
   onSelect,
   onRefresh,
 }: RepoCardProps) {
-  const [owner, name] = repo.repo.split('/');
+  const { owner, name } = parseRepo(repo.repo) ?? { owner: '', name: '' };
 
   return (
     <div
@@ -63,14 +46,14 @@ export function RepoCard({
       {/* Severity breakdown bar */}
       {repo.totalAlerts > 0 ? (
         <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-          {SEVERITY_BARS.map(({ key, color }) => {
+          {SEVERITIES.map((key) => {
             const count = repo.severityCounts[key] ?? 0;
             if (count === 0) return null;
             const pct = (count / repo.totalAlerts) * 100;
             return (
               <div
                 key={key}
-                className={`${color} transition-all`}
+                className={`${SEVERITY_BAR[key]} transition-all`}
                 style={{ width: `${pct}%` }}
                 title={`${key}: ${count}`}
               />
@@ -85,7 +68,7 @@ export function RepoCard({
 
       {/* Severity counts */}
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-        {SEVERITY_BARS.map(({ key }) => {
+        {SEVERITIES.map((key) => {
           const count = repo.severityCounts[key] ?? 0;
           return (
             <span key={key}>

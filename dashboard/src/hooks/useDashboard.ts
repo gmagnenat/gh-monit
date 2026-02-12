@@ -11,6 +11,7 @@ import {
   refreshAllRepos,
   refreshRepo,
 } from '../api/client';
+import { parseRepo } from '../utils/repo';
 
 type DashboardState = {
   summary: SummaryResponse | null;
@@ -50,6 +51,7 @@ export function useDashboard() {
   const [repoAlerts, setRepoAlerts] = useState<RepoAlertsResponse | null>(
     null
   );
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval>>(null);
 
@@ -77,6 +79,7 @@ export function useDashboard() {
       }));
 
       try {
+        setRefreshError(null);
         const updated = await refreshRepo(owner, name);
 
         // If this repo is currently selected, update its alerts
@@ -86,8 +89,10 @@ export function useDashboard() {
 
         // Reload dashboard to get updated summary + repo list
         await loadDashboard();
-      } catch {
-        // Errors are surfaced by the server; silently continue
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : `Failed to refresh ${key}`;
+        setRefreshError(message);
       } finally {
         setRepoLoading((prev) => {
           const next = new Set(prev.refreshing);
@@ -104,19 +109,22 @@ export function useDashboard() {
     setRepoLoading((prev) => ({ ...prev, bulkRefreshing: true }));
 
     try {
+      setRefreshError(null);
       await refreshAllRepos();
       // Reload dashboard to get updated summary + repo list
       await loadDashboard();
       // If a repo is selected, refresh its alerts too
       if (selectedRepo) {
-        const [owner, name] = selectedRepo.split('/');
-        if (owner && name) {
-          const result = await fetchRepoAlerts(owner, name);
+        const parsed = parseRepo(selectedRepo);
+        if (parsed) {
+          const result = await fetchRepoAlerts(parsed.owner, parsed.name);
           setRepoAlerts(result);
         }
       }
-    } catch {
-      // Errors are surfaced by the server; silently continue
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to refresh all repos';
+      setRefreshError(message);
     } finally {
       setRepoLoading((prev) => ({ ...prev, bulkRefreshing: false }));
     }
@@ -129,8 +137,9 @@ export function useDashboard() {
 
     if (!repoFullName) return;
 
-    const [owner, name] = repoFullName.split('/');
-    if (!owner || !name) return;
+    const parsed = parseRepo(repoFullName);
+    if (!parsed) return;
+    const { owner, name } = parsed;
 
     setRepoLoading((prev) => ({
       ...prev,
@@ -138,10 +147,13 @@ export function useDashboard() {
     }));
 
     try {
+      setRefreshError(null);
       const result = await fetchRepoAlerts(owner, name);
       setRepoAlerts(result);
-    } catch {
-      // Silently handle — empty alerts will show
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to load alerts';
+      setRefreshError(message);
     } finally {
       setRepoLoading((prev) => {
         const next = new Set(prev.loadingAlerts);
@@ -168,6 +180,7 @@ export function useDashboard() {
     ...state,
     selectedRepo,
     repoAlerts,
+    refreshError,
     bulkRefreshing: repoLoading.bulkRefreshing,
     isRefreshing: (repo: string) => repoLoading.refreshing.has(repo),
     isLoadingAlerts: (repo: string) => repoLoading.loadingAlerts.has(repo),

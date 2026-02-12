@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
 import type { AlertTimelineEntry } from '../api/client';
+import { formatDateTime } from '../utils/date';
+import { SEVERITY_BADGE } from '../utils/severity';
+import { Card } from './Card';
+import { EmptyState } from './EmptyState';
 
 const STATE_STYLES: Record<string, { dot: string; label: string }> = {
   open: {
@@ -15,25 +19,6 @@ const STATE_STYLES: Record<string, { dot: string; label: string }> = {
     label: 'text-slate-600 dark:text-slate-400',
   },
 };
-
-const SEVERITY_BADGE: Record<string, string> = {
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  low: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-};
-
-/** Format an ISO date string to a short, readable format. */
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 type AlertTimelineProps = {
   entries: AlertTimelineEntry[];
@@ -59,29 +44,22 @@ export function AlertTimeline({ entries, loading }: AlertTimelineProps) {
 
   if (loading) {
     return (
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
+      <Card className="mt-4 p-6 text-center">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Loading timeline...
         </p>
-      </div>
+      </Card>
     );
   }
 
   if (entries.length === 0) {
     return (
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Alert Timeline
-        </h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          No history entries yet.
-        </p>
-      </div>
+      <EmptyState title="Alert Timeline" message="No history entries yet." />
     );
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="mt-4 p-6">
       <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
         Alert Timeline
         <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
@@ -102,7 +80,7 @@ export function AlertTimeline({ entries, loading }: AlertTimelineProps) {
             <div className="relative flex-1 border-l-2 border-slate-200 pl-4 dark:border-slate-700">
               {events.map((event, i) => {
                 const stateStyle = STATE_STYLES[event.state] ?? STATE_STYLES.open;
-                const sevBadge = SEVERITY_BADGE[event.severity] ?? SEVERITY_BADGE.low;
+                const sevBadge = SEVERITY_BADGE[event.severity as keyof typeof SEVERITY_BADGE] ?? SEVERITY_BADGE.low;
 
                 return (
                   <div key={i} className="relative mb-3 last:mb-0">
@@ -122,7 +100,7 @@ export function AlertTimeline({ entries, loading }: AlertTimelineProps) {
                         {event.severity}
                       </span>
                       <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                        {formatDate(event.recordedAt)}
+                        {formatDateTime(event.recordedAt)}
                       </span>
                     </div>
                   </div>
@@ -132,6 +110,6 @@ export function AlertTimeline({ entries, loading }: AlertTimelineProps) {
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

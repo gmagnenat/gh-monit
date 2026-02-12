@@ -17,69 +17,63 @@ import {
   fetchTrends,
   fetchVulnerabilities,
 } from '../api/client';
+import { parseRepo } from '../utils/repo';
+import { useAsync } from './useAsync';
 
-type HistoryState = {
+export type HistoryData = {
   trends: TrendPoint[];
   mttr: MttrMetric[];
   sla: SlaViolation[];
+};
+
+export type HistoryState = HistoryData & {
   loading: boolean;
   error: string | null;
 };
 
-type VulnDepState = {
+export type VulnDepData = {
   vulnerabilities: VulnerabilityGroup[];
   dependencies: DependencyGroup[];
   ecosystems: EcosystemBreakdown[];
+};
+
+export type VulnDepState = VulnDepData & {
   loading: boolean;
   error: string | null;
 };
 
-type TimelineState = {
+export type TimelineState = {
   entries: AlertTimelineEntry[];
   loading: boolean;
+  error: string | null;
 };
+
+const INITIAL_HISTORY: HistoryData = { trends: [], mttr: [], sla: [] };
+const INITIAL_VULNDEP: VulnDepData = { vulnerabilities: [], dependencies: [], ecosystems: [] };
 
 /**
  * Hook for fetching history analytics data (trends, MTTR, SLA).
- * Lazily loads data — only fetches when `enabled` is true (first time Analytics tab opens).
+ * Lazily loads data — only fetches when `enabled` is true.
  */
 export function useHistory(enabled: boolean) {
-  const [state, setState] = useState<HistoryState>({
-    trends: [],
-    mttr: [],
-    sla: [],
-    loading: false,
-    error: null,
-  });
-  const [hasFetched, setHasFetched] = useState(false);
-
-  const loadHistory = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
+  const fetchAll = useCallback(
+    async () => {
       const [trends, mttr, sla] = await Promise.all([
         fetchTrends(),
         fetchMttr(),
         fetchSlaViolations(),
       ]);
-      setState({ trends, mttr, sla, loading: false, error: null });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to load history';
-      setState((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  }, []);
+      return { trends, mttr, sla };
+    },
+    []
+  );
 
-  useEffect(() => {
-    if (enabled && !hasFetched) {
-      setHasFetched(true);
-      loadHistory();
-    }
-  }, [enabled, hasFetched, loadHistory]);
+  const { data, loading, error, reload } = useAsync(fetchAll, {
+    initialData: INITIAL_HISTORY,
+    enabled,
+  });
 
-  return {
-    ...state,
-    reload: loadHistory,
-  } as const;
+  return { ...data, loading, error, reload } as const;
 }
 
 /**
@@ -87,48 +81,24 @@ export function useHistory(enabled: boolean) {
  * Lazily loads data — only fetches when `enabled` is true.
  */
 export function useVulnDep(enabled: boolean) {
-  const [state, setState] = useState<VulnDepState>({
-    vulnerabilities: [],
-    dependencies: [],
-    ecosystems: [],
-    loading: false,
-    error: null,
-  });
-  const [hasFetched, setHasFetched] = useState(false);
-
-  const loadData = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
+  const fetchAll = useCallback(
+    async () => {
       const [vulnerabilities, dependencies, ecosystems] = await Promise.all([
         fetchVulnerabilities(),
         fetchDependencies(),
         fetchEcosystems(),
       ]);
-      setState({
-        vulnerabilities,
-        dependencies,
-        ecosystems,
-        loading: false,
-        error: null,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to load analytics';
-      setState((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  }, []);
+      return { vulnerabilities, dependencies, ecosystems };
+    },
+    []
+  );
 
-  useEffect(() => {
-    if (enabled && !hasFetched) {
-      setHasFetched(true);
-      loadData();
-    }
-  }, [enabled, hasFetched, loadData]);
+  const { data, loading, error, reload } = useAsync(fetchAll, {
+    initialData: INITIAL_VULNDEP,
+    enabled,
+  });
 
-  return {
-    ...state,
-    reload: loadData,
-  } as const;
+  return { ...data, loading, error, reload } as const;
 }
 
 /**
@@ -139,22 +109,27 @@ export function useAlertTimeline(repo: string | null) {
   const [state, setState] = useState<TimelineState>({
     entries: [],
     loading: false,
+    error: null,
   });
 
   useEffect(() => {
     if (!repo) {
-      setState({ entries: [], loading: false });
+      setState({ entries: [], loading: false, error: null });
       return;
     }
 
-    const [owner, name] = repo.split('/');
-    if (!owner || !name) return;
+    const parsed = parseRepo(repo);
+    if (!parsed) return;
 
-    setState({ entries: [], loading: true });
+    setState({ entries: [], loading: true, error: null });
 
-    fetchAlertHistory(owner, name)
-      .then((entries) => setState({ entries, loading: false }))
-      .catch(() => setState({ entries: [], loading: false }));
+    fetchAlertHistory(parsed.owner, parsed.name)
+      .then((entries) => setState({ entries, loading: false, error: null }))
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : 'Failed to load timeline';
+        setState({ entries: [], loading: false, error: message });
+      });
   }, [repo]);
 
   return state;

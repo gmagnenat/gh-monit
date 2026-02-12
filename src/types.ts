@@ -1,3 +1,18 @@
+// Re-export shared types used by both backend and frontend
+export type {
+  AlertTimelineEntry,
+  DependencyGroup,
+  EcosystemBreakdown,
+  MttrMetric,
+  RepoSummary,
+  SeverityCounts,
+  SlaViolation,
+  TrendPoint,
+  VulnerabilityGroup,
+} from '../shared/types.js';
+
+// Backend-only types
+
 export type NormalizedAlert = {
   repo: string;
   alertNumber: number;
@@ -30,76 +45,4 @@ export type RepoAlertsResult = {
   alerts: NormalizedAlert[];
   lastSync: string | null;
   usedCache: boolean;
-};
-
-export type SeverityCounts = Record<string, number>;
-
-export type RepoSummary = {
-  repo: string;
-  lastSync: string;
-  severityCounts: SeverityCounts;
-  totalAlerts: number;
-};
-
-export type TrendPoint = {
-  day: string;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-};
-
-export type MttrMetric = {
-  repo: string;
-  severity: string;
-  avgDays: number;
-  resolvedCount: number;
-};
-
-export type AlertTimelineEntry = {
-  alertNumber: number;
-  state: string;
-  severity: string;
-  recordedAt: string;
-};
-
-export type SlaViolation = {
-  repo: string;
-  alertNumber: number;
-  severity: string;
-  packageName: string | null;
-  htmlUrl: string | null;
-  firstSeen: string;
-  openDays: number;
-  slaLimitDays: number;
-  overdue: boolean;
-};
-
-export type VulnerabilityGroup = {
-  ghsaId: string;
-  cveId: string | null;
-  severity: string;
-  summary: string | null;
-  cvssScore: number | null;
-  patchedVersion: string | null;
-  affectedRepos: number;
-  totalAlerts: number;
-  repos: string[];
-};
-
-export type DependencyGroup = {
-  packageName: string;
-  ecosystem: string | null;
-  totalAlerts: number;
-  affectedRepos: number;
-  criticalCount: number;
-  highCount: number;
-  repos: string[];
-};
-
-export type EcosystemBreakdown = {
-  ecosystem: string;
-  totalAlerts: number;
-  affectedRepos: number;
-  uniquePackages: number;
 };

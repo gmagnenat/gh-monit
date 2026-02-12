@@ -12,6 +12,8 @@ import {
   YAxis,
 } from 'recharts';
 import type { EcosystemBreakdown } from '../api/client';
+import { Card } from './Card';
+import { EmptyState } from './EmptyState';
 
 const ECOSYSTEM_PALETTE: Record<string, string> = {
   npm: '#ef4444',
@@ -53,14 +55,10 @@ type EcosystemChartProps = {
 export function EcosystemChart({ data }: EcosystemChartProps) {
   if (data.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Ecosystem Breakdown
-        </h3>
-        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-          No ecosystem data available yet. Sync repos to start tracking.
-        </p>
-      </div>
+      <EmptyState
+        title="Ecosystem Breakdown"
+        message="No ecosystem data available yet. Sync repos to start tracking."
+      />
     );
   }
 
@@ -70,7 +68,7 @@ export function EcosystemChart({ data }: EcosystemChartProps) {
   }));
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="p-6">
       <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
         Ecosystem Breakdown
       </h3>
@@ -199,6 +197,6 @@ export function EcosystemChart({ data }: EcosystemChartProps) {
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

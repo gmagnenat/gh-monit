@@ -1,6 +1,17 @@
-// --- API response types (mirrors backend shapes) ---
+// Re-export shared types from the single source of truth
+export type {
+  AlertTimelineEntry,
+  DependencyGroup,
+  EcosystemBreakdown,
+  MttrMetric,
+  RepoSummary,
+  SeverityCounts,
+  SlaViolation,
+  TrendPoint,
+  VulnerabilityGroup,
+} from '../../../shared/types';
 
-export type SeverityCounts = Record<string, number>;
+import type { RepoSummary, SeverityCounts } from '../../../shared/types';
 
 // --- Sorting types and helpers ---
 
@@ -88,12 +99,7 @@ export function filterReposBySeverity(
   });
 }
 
-export type RepoSummary = {
-  repo: string;
-  lastSync: string;
-  severityCounts: SeverityCounts;
-  totalAlerts: number;
-};
+// --- Frontend-only types ---
 
 export type SummaryResponse = {
   totalRepos: number;
@@ -193,43 +199,9 @@ export function refreshAllRepos(): Promise<BulkRefreshResponse> {
   });
 }
 
-// --- History analytics types ---
-
-export type TrendPoint = {
-  day: string;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-};
-
-export type MttrMetric = {
-  repo: string;
-  severity: string;
-  avgDays: number;
-  resolvedCount: number;
-};
-
-export type AlertTimelineEntry = {
-  alertNumber: number;
-  state: string;
-  severity: string;
-  recordedAt: string;
-};
-
-export type SlaViolation = {
-  repo: string;
-  alertNumber: number;
-  severity: string;
-  packageName: string | null;
-  htmlUrl: string | null;
-  firstSeen: string;
-  openDays: number;
-  slaLimitDays: number;
-  overdue: boolean;
-};
-
 // --- History analytics fetchers ---
+
+import type { AlertTimelineEntry, MttrMetric, SlaViolation, TrendPoint } from '../../../shared/types';
 
 /** Daily trend data: open alert counts grouped by severity. */
 export function fetchTrends(repo?: string | null): Promise<TrendPoint[]> {
@@ -258,38 +230,9 @@ export function fetchSlaViolations(): Promise<SlaViolation[]> {
   return request<SlaViolation[]>('/api/history/sla');
 }
 
-// --- Cross-repo analytics types ---
-
-export type VulnerabilityGroup = {
-  ghsaId: string;
-  cveId: string | null;
-  severity: string;
-  summary: string | null;
-  cvssScore: number | null;
-  patchedVersion: string | null;
-  affectedRepos: number;
-  totalAlerts: number;
-  repos: string[];
-};
-
-export type DependencyGroup = {
-  packageName: string;
-  ecosystem: string | null;
-  totalAlerts: number;
-  affectedRepos: number;
-  criticalCount: number;
-  highCount: number;
-  repos: string[];
-};
-
-export type EcosystemBreakdown = {
-  ecosystem: string;
-  totalAlerts: number;
-  affectedRepos: number;
-  uniquePackages: number;
-};
-
 // --- Cross-repo analytics fetchers ---
+
+import type { DependencyGroup, EcosystemBreakdown, VulnerabilityGroup } from '../../../shared/types';
 
 /** Vulnerability groups: advisories grouped by GHSA ID across all repos. */
 export function fetchVulnerabilities(): Promise<VulnerabilityGroup[]> {

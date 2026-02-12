@@ -1,4 +1,9 @@
 import type { SlaViolation } from '../api/client';
+import { formatDate } from '../utils/date';
+import { SEVERITY_BADGE } from '../utils/severity';
+import { Card } from './Card';
+import { EmptyState } from './EmptyState';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './Table';
 
 const SLA_DEFAULTS: { severity: string; limit: string }[] = [
   { severity: 'Critical', limit: '2 days' },
@@ -6,23 +11,6 @@ const SLA_DEFAULTS: { severity: string; limit: string }[] = [
   { severity: 'Medium', limit: '30 days' },
   { severity: 'Low', limit: '90 days' },
 ];
-
-const SEVERITY_BADGE: Record<string, string> = {
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  low: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-};
-
-/** Format an ISO date to a short date string. */
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
 
 type SlaPanelProps = {
   data: SlaViolation[];
@@ -33,7 +21,7 @@ export function SlaPanel({ data }: SlaPanelProps) {
   const overdueCount = data.filter((v) => v.overdue).length;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <Card>
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -69,50 +57,31 @@ export function SlaPanel({ data }: SlaPanelProps) {
       </div>
 
       {data.length === 0 ? (
-        <div className="p-6 text-center">
-          <p className="text-sm text-green-600 dark:text-green-400">
-            No open alerts — SLA tracking will start once alerts are synced.
-          </p>
-        </div>
+        <EmptyState
+          variant="positive"
+          message="No open alerts — SLA tracking will start once alerts are synced."
+        />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Repo
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Alert
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Severity
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Package
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Open Since
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Days Open
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  SLA Limit
-                </th>
-                <th className="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Link
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <Table>
+            <TableHead>
+              <TableHeader>Repo</TableHeader>
+              <TableHeader>Alert</TableHeader>
+              <TableHeader>Severity</TableHeader>
+              <TableHeader>Package</TableHeader>
+              <TableHeader>Open Since</TableHeader>
+              <TableHeader>Days Open</TableHeader>
+              <TableHeader>SLA Limit</TableHeader>
+              <TableHeader>Link</TableHeader>
+            </TableHead>
+            <TableBody>
               {data.map((v) => {
                 const isOverdue = v.overdue;
                 const sevBadge =
-                  SEVERITY_BADGE[v.severity] ?? SEVERITY_BADGE.low;
+                  SEVERITY_BADGE[v.severity as keyof typeof SEVERITY_BADGE] ?? SEVERITY_BADGE.low;
 
                 return (
-                  <tr
+                  <TableRow
                     key={`${v.repo}-${v.alertNumber}`}
                     className={
                       isOverdue
@@ -120,26 +89,26 @@ export function SlaPanel({ data }: SlaPanelProps) {
                         : 'transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }
                   >
-                    <td className="px-4 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                    <TableCell className="font-mono text-xs text-slate-700 dark:text-slate-300">
                       {v.repo}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                       #{v.alertNumber}
-                    </td>
-                    <td className="px-4 py-2">
+                    </TableCell>
+                    <TableCell>
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${sevBadge}`}
                       >
                         {v.severity}
                       </span>
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-slate-700 dark:text-slate-300">
                       {v.packageName ?? '—'}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                       {formatDate(v.firstSeen)}
-                    </td>
-                    <td className="px-4 py-2">
+                    </TableCell>
+                    <TableCell>
                       <span
                         className={`text-xs font-medium ${
                           isOverdue
@@ -154,11 +123,11 @@ export function SlaPanel({ data }: SlaPanelProps) {
                           </span>
                         )}
                       </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                       {v.slaLimitDays}d
-                    </td>
-                    <td className="px-4 py-2">
+                    </TableCell>
+                    <TableCell>
                       {v.htmlUrl ? (
                         <a
                           href={v.htmlUrl}
@@ -173,14 +142,14 @@ export function SlaPanel({ data }: SlaPanelProps) {
                           —
                         </span>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

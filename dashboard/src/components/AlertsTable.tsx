@@ -1,34 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Alert } from '../api/client';
+import { formatRelativeTime } from '../utils/date';
+import { SEVERITY_ORDER } from '../utils/severity';
+import { Card } from './Card';
 import { SeverityBadge } from './SeverityBadge';
-
-const SEVERITY_ORDER: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
+import { Table, TableBody, TableCell, TableRow } from './Table';
 
 type SortField = 'severity' | 'package' | 'ecosystem' | 'state' | 'created';
 type SortDir = 'asc' | 'desc';
-
-/** Format an ISO date as a relative time string (e.g. "2d ago"). */
-function formatRelativeTime(isoDate: string | null): string {
-  if (!isoDate) return '—';
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  const years = Math.floor(months / 12);
-  return `${years}y ago`;
-}
 
 type AlertsTableProps = {
   alerts: Alert[];
@@ -63,8 +42,8 @@ export function AlertsTable({
     return [...alerts].sort((a, b) => {
       switch (sortField) {
         case 'severity': {
-          const aIdx = SEVERITY_ORDER[a.severity.toLowerCase()] ?? 99;
-          const bIdx = SEVERITY_ORDER[b.severity.toLowerCase()] ?? 99;
+          const aIdx = SEVERITY_ORDER[a.severity.toLowerCase() as keyof typeof SEVERITY_ORDER] ?? 99;
+          const bIdx = SEVERITY_ORDER[b.severity.toLowerCase() as keyof typeof SEVERITY_ORDER] ?? 99;
           return (aIdx - bIdx) * mult;
         }
         case 'package':
@@ -102,16 +81,16 @@ export function AlertsTable({
 
   if (isLoading) {
     return (
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
+      <Card className="mt-4 p-6 text-center">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Loading alerts...
         </p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <Card className="mt-4 overflow-hidden">
       <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Alerts for{' '}
@@ -132,7 +111,7 @@ export function AlertsTable({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <Table>
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
                 {(
@@ -158,31 +137,28 @@ export function AlertsTable({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <TableBody>
               {sorted.map((alert) => (
-                <tr
-                  key={alert.alertNumber}
-                  className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                >
-                  <td className="px-4 py-2">
+                <TableRow key={alert.alertNumber}>
+                  <TableCell>
                     <SeverityBadge severity={alert.severity} />
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-slate-700 dark:text-slate-300">
                     {alert.packageName ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                     {alert.ecosystem ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                     {alert.state}
-                  </td>
-                  <td
-                    className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400"
+                  </TableCell>
+                  <TableCell
+                    className="text-xs text-slate-500 dark:text-slate-400"
                     title={alert.createdAt ?? undefined}
                   >
                     {formatRelativeTime(alert.createdAt)}
-                  </td>
-                  <td className="px-4 py-2">
+                  </TableCell>
+                  <TableCell>
                     {alert.htmlUrl ? (
                       <a
                         href={alert.htmlUrl}
@@ -198,13 +174,13 @@ export function AlertsTable({
                         —
                       </span>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

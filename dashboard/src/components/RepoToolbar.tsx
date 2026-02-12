@@ -1,4 +1,5 @@
 import type { RepoSortOption, SeverityFilter } from '../api/client';
+import { SEVERITY_OPTIONS } from '../utils/severity';
 
 type RepoToolbarProps = {
   searchQuery: string;
@@ -17,13 +18,6 @@ const SORT_OPTIONS: { id: RepoSortOption; label: string }[] = [
   { id: 'name', label: 'Name' },
   { id: 'critical', label: 'Critical' },
   { id: 'total', label: 'Total' },
-];
-
-const SEVERITY_OPTIONS: { key: keyof SeverityFilter; label: string; color: string }[] = [
-  { key: 'critical', label: 'C', color: 'bg-red-500' },
-  { key: 'high', label: 'H', color: 'bg-orange-500' },
-  { key: 'medium', label: 'M', color: 'bg-yellow-500' },
-  { key: 'low', label: 'L', color: 'bg-blue-500' },
 ];
 
 /** Toolbar with search, sort, severity filter, and bulk refresh. */

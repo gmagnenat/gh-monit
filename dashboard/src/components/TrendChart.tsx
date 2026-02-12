@@ -9,13 +9,9 @@ import {
   YAxis,
 } from 'recharts';
 import type { TrendPoint } from '../api/client';
-
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  low: '#3b82f6',
-};
+import { SEVERITY_HEX } from '../utils/severity';
+import { Card } from './Card';
+import { EmptyState } from './EmptyState';
 
 type TrendChartProps = {
   data: TrendPoint[];
@@ -25,26 +21,22 @@ type TrendChartProps = {
 export function TrendChart({ data }: TrendChartProps) {
   if (data.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Alert Trends
-        </h3>
-        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-          No trend data available yet. Sync repos to start tracking history.
-        </p>
-      </div>
+      <EmptyState
+        title="Alert Trends"
+        message="No trend data available yet. Sync repos to start tracking history."
+      />
     );
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="p-6">
       <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
         Alert Trends
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <defs>
-            {Object.entries(SEVERITY_COLORS).map(([key, color]) => (
+            {Object.entries(SEVERITY_HEX).map(([key, color]) => (
               <linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={color} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={color} stopOpacity={0.05} />
@@ -81,7 +73,7 @@ export function TrendChart({ data }: TrendChartProps) {
             type="monotone"
             dataKey="critical"
             stackId="1"
-            stroke={SEVERITY_COLORS.critical}
+            stroke={SEVERITY_HEX.critical}
             fill="url(#grad-critical)"
             name="Critical"
           />
@@ -89,7 +81,7 @@ export function TrendChart({ data }: TrendChartProps) {
             type="monotone"
             dataKey="high"
             stackId="1"
-            stroke={SEVERITY_COLORS.high}
+            stroke={SEVERITY_HEX.high}
             fill="url(#grad-high)"
             name="High"
           />
@@ -97,7 +89,7 @@ export function TrendChart({ data }: TrendChartProps) {
             type="monotone"
             dataKey="medium"
             stackId="1"
-            stroke={SEVERITY_COLORS.medium}
+            stroke={SEVERITY_HEX.medium}
             fill="url(#grad-medium)"
             name="Medium"
           />
@@ -105,12 +97,12 @@ export function TrendChart({ data }: TrendChartProps) {
             type="monotone"
             dataKey="low"
             stackId="1"
-            stroke={SEVERITY_COLORS.low}
+            stroke={SEVERITY_HEX.low}
             fill="url(#grad-low)"
             name="Low"
           />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </Card>
   );
 }
