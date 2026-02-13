@@ -363,7 +363,7 @@ export function getAllRepoSummaries(db: Database.Database): RepoSummary[] {
     [
       "SELECT rs.repo, rs.last_sync, a.severity, COUNT(*) AS count",
       "FROM repo_sync rs",
-      "LEFT JOIN alerts a ON a.repo = rs.repo",
+      "LEFT JOIN alerts a ON a.repo = rs.repo AND a.state = 'open'",
       "GROUP BY rs.repo, a.severity",
       "ORDER BY rs.repo",
     ].join(" "),
