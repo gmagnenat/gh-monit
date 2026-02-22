@@ -1,4 +1,19 @@
+# IDE / editor metadata
+.cursor/
+.sidecar/
+
+# Build artifacts
+dashboard/tsconfig.tsbuildinfo
+
+# SQLite databases (safety net)
+.db
+.sqlite
+.sqlite3
+
+# Misc
+wcag.csv
+
 node_modules
 dist
 dashboard/node_modules
-.cursor/plans
+.todos/
