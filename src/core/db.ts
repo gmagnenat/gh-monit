@@ -27,11 +27,9 @@ import {
 
 // --- Constants ---
 
-export const DEFAULT_DB_PATH = path.join(
-  os.homedir(),
-  ".gh-monit",
-  "gh-monit.db"
-);
+export const DEFAULT_DB_PATH =
+  process.env.GH_MONIT_DB_PATH ??
+  path.join(os.homedir(), '.gh-monit', 'gh-monit.db');
 
 // --- Row schemas (validate camelCase-mapped DB rows via Zod) ---
 

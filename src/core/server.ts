@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type Database from 'better-sqlite3';
+import type { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -34,17 +35,17 @@ const MIME_TYPES: Record<string, string> = {
 /**
  * Creates a Hono app with API routes and static file serving.
  * The server reads from the SQLite database and delegates GitHub
- * API calls to the existing core/github module.
+ * API calls to the Octokit client.
  */
 export function createServer(
   db: Database.Database,
+  octokit: Octokit,
   dashboardDir: string
 ): Hono {
   const app = new Hono();
 
   // --- API routes ---
 
-  /** Global summary: total repos, total alerts, breakdown by severity. */
   app.get('/api/summary', (c) => {
     const repos = getAllRepoSummaries(db);
     const totalRepos = repos.length;
@@ -60,13 +61,11 @@ export function createServer(
     return c.json({ totalRepos, totalAlerts, severityCounts });
   });
 
-  /** List all tracked repos with severity counts and last sync timestamp. */
   app.get('/api/repos', (c) => {
     const repos = getAllRepoSummaries(db);
     return c.json(repos);
   });
 
-  /** Full sorted alert list for one repo. */
   app.get('/api/repos/:owner/:name/alerts', (c) => {
     const owner = c.req.param('owner');
     const name = c.req.param('name');
@@ -75,13 +74,12 @@ export function createServer(
     return c.json(result);
   });
 
-  /** Fetch fresh alerts from GitHub, normalize, save, and return updated data. */
   app.post('/api/repos/:owner/:name/refresh', async (c) => {
     const owner = c.req.param('owner');
     const name = c.req.param('name');
     const fullName = `${owner}/${name}`;
 
-    const raw = await fetchDependabotAlerts({ owner, name, fullName });
+    const raw = await fetchDependabotAlerts(octokit, { owner, name, fullName });
     if (!raw) {
       return c.json({ error: 'GitHub API request failed' }, 500);
     }
@@ -94,7 +92,6 @@ export function createServer(
     return c.json(updated);
   });
 
-  /** Bulk refresh all tracked repos from GitHub. */
   app.post('/api/repos/refresh-all', async (c) => {
     const repos = getAllRepoSummaries(db);
     const results: { repo: string; success: boolean }[] = [];
@@ -102,7 +99,7 @@ export function createServer(
     for (const { repo } of repos) {
       const [owner, name] = repo.split('/');
       try {
-        const raw = await fetchDependabotAlerts({
+        const raw = await fetchDependabotAlerts(octokit, {
           owner,
           name,
           fullName: repo,
@@ -128,21 +125,18 @@ export function createServer(
 
   // --- History analytics routes ---
 
-  /** Trend data: daily open alert counts grouped by severity. */
   app.get('/api/history/trends', (c) => {
     const repo = c.req.query('repo') || null;
     const data = getTrendData(db, repo);
     return c.json(data);
   });
 
-  /** MTTR metrics: average remediation time per repo and severity. */
   app.get('/api/history/mttr', (c) => {
     const repo = c.req.query('repo') || null;
     const data = getMttrMetrics(db, repo);
     return c.json(data);
   });
 
-  /** Per-alert state transitions timeline for a repo. */
   app.get('/api/repos/:owner/:name/history', (c) => {
     const owner = c.req.param('owner');
     const name = c.req.param('name');
@@ -151,7 +145,6 @@ export function createServer(
     return c.json(data);
   });
 
-  /** SLA violations: open alerts exceeding time thresholds. */
   app.get('/api/history/sla', (c) => {
     const data = getSlaViolations(db);
     return c.json(data);
@@ -159,19 +152,16 @@ export function createServer(
 
   // --- Cross-repo analytics routes ---
 
-  /** Vulnerability groups: advisories grouped by GHSA ID across all repos. */
   app.get('/api/analytics/vulnerabilities', (c) => {
     const data = getVulnerabilityGroups(db);
     return c.json(data);
   });
 
-  /** Dependency landscape: packages ranked by risk across all repos. */
   app.get('/api/analytics/dependencies', (c) => {
     const data = getDependencyLandscape(db);
     return c.json(data);
   });
 
-  /** Ecosystem breakdown: alert distribution by ecosystem. */
   app.get('/api/analytics/ecosystems', (c) => {
     const data = getEcosystemBreakdown(db);
     return c.json(data);
@@ -187,12 +177,10 @@ export function createServer(
     );
     const normalizedPath = path.normalize(filePath);
 
-    // Prevent directory traversal
     if (!normalizedPath.startsWith(dashboardDir)) {
       return c.text('Forbidden', 403);
     }
 
-    // Serve the file directly if it exists
     if (
       fs.existsSync(normalizedPath) &&
       fs.statSync(normalizedPath).isFile()
@@ -205,7 +193,6 @@ export function createServer(
       });
     }
 
-    // SPA fallback: serve index.html for non-file paths
     const indexPath = path.join(dashboardDir, 'index.html');
     if (fs.existsSync(indexPath)) {
       const content = fs.readFileSync(indexPath, 'utf-8');

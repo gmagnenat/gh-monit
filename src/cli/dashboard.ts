@@ -1,12 +1,28 @@
 import type { Command } from 'commander';
+import type { Octokit } from '@octokit/rest';
+import type Database from 'better-sqlite3';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { serve } from '@hono/node-server';
-import { DEFAULT_DB_PATH, openDatabase, resolveDbPath } from '../core/db.js';
+import {
+  DEFAULT_DB_PATH,
+  getAllRepoSummaries,
+  openDatabase,
+  resolveDbPath,
+  saveAlerts,
+} from '../core/db.js';
+import { normalizeAlerts } from '../core/alerts.js';
+import { createGitHubClient } from '../core/github-client.js';
+import {
+  fetchDependabotAlerts,
+  listOrgRepos,
+  listUserRepos,
+} from '../core/github.js';
 import { createServer } from '../core/server.js';
+import type { RepoRef } from '../types.js';
 
 type DashboardOptions = {
   port: string;
@@ -61,6 +77,73 @@ function openBrowser(url: string): void {
   });
 }
 
+/**
+ * If the database is empty and GH_MONIT_USER or GH_MONIT_ORG env vars are set,
+ * fetches all repos and their alerts in the background.
+ */
+function seedIfEmpty(db: Database.Database, octokit: Octokit): void {
+  const existing = getAllRepoSummaries(db);
+  if (existing.length > 0) {
+    return;
+  }
+
+  const user = process.env.GH_MONIT_USER;
+  const org = process.env.GH_MONIT_ORG;
+
+  if (!user && !org) {
+    return;
+  }
+
+  const targets = [
+    ...(user ? user.split(',').map((u) => ({ type: 'user' as const, value: u.trim() })) : []),
+    ...(org ? org.split(',').map((o) => ({ type: 'org' as const, value: o.trim() })) : []),
+  ];
+
+  console.log(
+    chalk.cyan(
+      `  Seeding database for: ${targets.map((t) => `${t.type}:${t.value}`).join(', ')}...`
+    )
+  );
+
+  seedRepos(db, octokit, targets).then((count) => {
+    console.log(chalk.green(`  Seed complete: ${count} repos synced.\n`));
+  }).catch((error) => {
+    console.error(chalk.red('  Seed failed:'), error);
+  });
+}
+
+async function seedRepos(
+  db: Database.Database,
+  octokit: Octokit,
+  targets: { type: 'user' | 'org'; value: string }[]
+): Promise<number> {
+  const repos: RepoRef[] = [];
+
+  for (const target of targets) {
+    const list =
+      target.type === 'user'
+        ? await listUserRepos(octokit, target.value, false)
+        : await listOrgRepos(octokit, target.value, false);
+
+    if (list) {
+      repos.push(...list);
+    }
+  }
+
+  let synced = 0;
+  for (const repo of repos) {
+    const raw = await fetchDependabotAlerts(octokit, repo);
+    if (raw) {
+      const alerts = normalizeAlerts(repo.fullName, raw);
+      saveAlerts(db, repo.fullName, alerts, new Date().toISOString());
+      synced++;
+      console.log(chalk.gray(`    ✓ ${repo.fullName} (${alerts.length} alerts)`));
+    }
+  }
+
+  return synced;
+}
+
 export function registerDashboardCommand(program: Command): void {
   program
     .command('dashboard')
@@ -91,7 +174,13 @@ export function registerDashboardCommand(program: Command): void {
 
       const dbPath = resolveDbPath(options.db);
       const db = openDatabase(dbPath);
-      const app = createServer(db, dashboardDir);
+
+      const octokit = createGitHubClient();
+      if (!octokit) {
+        return;
+      }
+
+      const app = createServer(db, octokit, dashboardDir);
       const url = `http://localhost:${port}`;
 
       const server = serve({ fetch: app.fetch, port }, () => {
@@ -102,6 +191,8 @@ export function registerDashboardCommand(program: Command): void {
         if (options.open) {
           openBrowser(url);
         }
+
+        seedIfEmpty(db, octokit);
       });
 
       // Graceful shutdown on SIGINT
