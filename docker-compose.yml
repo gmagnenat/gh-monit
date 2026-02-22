@@ -7,6 +7,7 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GH_MONIT_USER=${GH_MONIT_USER:-}
       - GH_MONIT_ORG=${GH_MONIT_ORG:-}
+      - GH_MONIT_REFRESH_SCHEDULE=${GH_MONIT_REFRESH_SCHEDULE:-0 6 * * *}
     volumes:
       - gh-monit-data:/data
     restart: unless-stopped

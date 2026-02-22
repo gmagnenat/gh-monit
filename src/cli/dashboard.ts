@@ -22,7 +22,10 @@ import {
   listUserRepos,
 } from '../core/github.js';
 import { createServer } from '../core/server.js';
+import { startScheduler, stopScheduler } from '../core/scheduler.js';
 import type { RepoRef } from '../types.js';
+
+const DEFAULT_CRON_SCHEDULE = '0 6 * * *';
 
 type DashboardOptions = {
   port: string;
@@ -183,9 +186,18 @@ export function registerDashboardCommand(program: Command): void {
       const app = createServer(db, octokit, dashboardDir);
       const url = `http://localhost:${port}`;
 
+      const cronExpression =
+        process.env.GH_MONIT_REFRESH_SCHEDULE || DEFAULT_CRON_SCHEDULE;
+
       const server = serve({ fetch: app.fetch, port }, () => {
         console.log(chalk.bold('\n  gh-monit Dashboard\n'));
         console.log(`  ${chalk.green('➜')}  ${chalk.cyan(url)}\n`);
+
+        startScheduler(db, octokit, cronExpression);
+        console.log(
+          chalk.gray(`  Auto-refresh scheduled: ${cronExpression}\n`)
+        );
+
         console.log(chalk.gray('  Press Ctrl+C to stop\n'));
 
         if (options.open) {
@@ -195,9 +207,9 @@ export function registerDashboardCommand(program: Command): void {
         seedIfEmpty(db, octokit);
       });
 
-      // Graceful shutdown on SIGINT
       process.on('SIGINT', () => {
         console.log(chalk.gray('\nShutting down...'));
+        stopScheduler();
         server.close();
         db.close();
         process.exit(0);
