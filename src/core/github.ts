@@ -1,95 +1,101 @@
-import chalk from "chalk";
-import { execa } from "execa";
-import type { RepoRef } from "../types.js";
-
-type GitHubRepo = {
-  name: string;
-  full_name: string;
-  owner: { login: string };
-  fork: boolean;
-};
-
-type GitHubUser = {
-  login: string;
-};
+import chalk from 'chalk';
+import type { Octokit } from '@octokit/rest';
+import type { RepoRef } from '../types.js';
 
 export async function fetchDependabotAlerts(
+  octokit: Octokit,
   repo: RepoRef
 ): Promise<unknown[] | null> {
-  return ghApiJson<unknown[]>([
-    "--paginate",
-    `repos/${repo.owner}/${repo.name}/dependabot/alerts`,
-  ]);
+  try {
+    const alerts = await octokit.paginate(
+      octokit.rest.dependabot.listAlertsForRepo,
+      { owner: repo.owner, repo: repo.name, per_page: 100 }
+    );
+    return alerts as unknown[];
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
-export async function getAuthenticatedUser(): Promise<string | null> {
-  const user = await ghApiJson<GitHubUser>(["user"]);
-  return user?.login ?? null;
+export async function getAuthenticatedUser(
+  octokit: Octokit
+): Promise<string | null> {
+  try {
+    const { data } = await octokit.rest.users.getAuthenticated();
+    return data.login;
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function listUserRepos(
+  octokit: Octokit,
   username: string,
   includeForks: boolean
 ): Promise<RepoRef[] | null> {
-  const authenticated = await getAuthenticatedUser();
+  const authenticated = await getAuthenticatedUser(octokit);
   const isSelf = authenticated?.toLowerCase() === username.toLowerCase();
-  const endpoint = isSelf
-    ? "user/repos?visibility=all&affiliation=owner"
-    : `users/${username}/repos`;
 
-  const repos = await ghApiJson<GitHubRepo[]>(["--paginate", endpoint]);
-  if (!repos) {
-    return null;
+  try {
+    const repos = isSelf
+      ? await octokit.paginate(
+          octokit.rest.repos.listForAuthenticatedUser,
+          { visibility: 'all', affiliation: 'owner', per_page: 100 }
+        )
+      : await octokit.paginate(octokit.rest.repos.listForUser, {
+          username,
+          per_page: 100,
+        });
+
+    return repos
+      .filter(
+        (repo) =>
+          repo.owner?.login.toLowerCase() === username.toLowerCase() &&
+          (includeForks || !repo.fork)
+      )
+      .map((repo) => ({
+        owner: repo.owner!.login,
+        name: repo.name,
+        fullName: repo.full_name,
+      }));
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  return repos
-    .filter(
-      (repo) =>
-        repo.owner.login.toLowerCase() === username.toLowerCase() &&
-        (includeForks || !repo.fork)
-    )
-    .map((repo) => ({
-      owner: repo.owner.login,
-      name: repo.name,
-      fullName: repo.full_name,
-    }));
 }
 
 export async function listOrgRepos(
+  octokit: Octokit,
   org: string,
   includeForks: boolean
 ): Promise<RepoRef[] | null> {
-  const repos = await ghApiJson<GitHubRepo[]>([
-    "--paginate",
-    `orgs/${org}/repos?type=all`,
-  ]);
-  if (!repos) {
-    return null;
-  }
+  try {
+    const repos = await octokit.paginate(octokit.rest.repos.listForOrg, {
+      org,
+      type: 'all',
+      per_page: 100,
+    });
 
-  return repos
-    .filter((repo) => includeForks || !repo.fork)
-    .map((repo) => ({
-      owner: repo.owner.login,
-      name: repo.name,
-      fullName: repo.full_name,
-    }));
+    return repos
+      .filter((repo) => includeForks || !repo.fork)
+      .map((repo) => ({
+        owner: repo.owner.login,
+        name: repo.name,
+        fullName: repo.full_name,
+      }));
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
-async function ghApiJson<T>(args: string[]): Promise<T | null> {
-  try {
-    const response = await execa("gh", ["api", ...args]);
-    return JSON.parse(response.stdout) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(chalk.red("GitHub API request failed."));
-    console.error(
-      chalk.yellow(
-        "Check `gh auth status` and ensure the target repo/user exists."
-      )
-    );
-    console.error(chalk.gray(message));
-    process.exitCode = 1;
-    return null;
-  }
+function handleApiError(error: unknown): null {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(chalk.red('GitHub API request failed.'));
+  console.error(
+    chalk.yellow(
+      'Ensure GITHUB_TOKEN is valid and the target repo/user/org exists.'
+    )
+  );
+  console.error(chalk.gray(message));
+  process.exitCode = 1;
+  return null;
 }

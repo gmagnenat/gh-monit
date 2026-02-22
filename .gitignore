@@ -13,6 +13,9 @@ dashboard/tsconfig.tsbuildinfo
 # Misc
 wcag.csv
 
+# Environment variables
+.env
+
 node_modules
 dist
 dashboard/node_modules

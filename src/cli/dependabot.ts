@@ -1,29 +1,31 @@
-import type { Command } from "commander";
-import { z } from "zod";
-import chalk from "chalk";
+import type { Command } from 'commander';
+import type { Octokit } from '@octokit/rest';
+import { z } from 'zod';
+import chalk from 'chalk';
 import {
   DEFAULT_DB_PATH,
   getCachedAlerts,
   openDatabase,
   resolveDbPath,
   saveAlerts,
-} from "../core/db.js";
-import { filterAlertsBySince, normalizeAlerts } from "../core/alerts.js";
+} from '../core/db.js';
+import { filterAlertsBySince, normalizeAlerts } from '../core/alerts.js';
 import {
   fetchDependabotAlerts,
   listOrgRepos,
   listUserRepos,
-} from "../core/github.js";
-import type { RepoAlertsResult, RepoRef } from "../types.js";
+} from '../core/github.js';
+import { createGitHubClient } from '../core/github-client.js';
+import type { RepoAlertsResult, RepoRef } from '../types.js';
 import {
   renderOrgOutput,
   renderRepoOutput,
   renderUserOutput,
-} from "../ui/output.js";
+} from '../ui/output.js';
 
 const repoSchema = z
   .string()
-  .regex(/^[^/]+\/[^/]+$/, "Repo must be in owner/name format");
+  .regex(/^[^/]+\/[^/]+$/, 'Repo must be in owner/name format');
 
 type DependabotOptions = {
   repo?: string;
@@ -38,16 +40,16 @@ type DependabotOptions = {
 
 export function registerDependabotCommand(program: Command): void {
   program
-    .command("dependabot")
-    .description("Fetch Dependabot alerts for a repo or user")
-    .option("--repo <owner/name>", "GitHub repo in owner/name format")
-    .option("--user <username>", "GitHub username")
-    .option("--org <org>", "GitHub organization")
-    .option("--include-forks", "Include forked repos", false)
-    .option("--db <path>", "Path to sqlite db", DEFAULT_DB_PATH)
-    .option("--since <date>", "Filter alerts updated since ISO date")
-    .option("--json", "Output alerts as JSON", false)
-    .option("--refresh", "Bypass cache and fetch fresh data", false)
+    .command('dependabot')
+    .description('Fetch Dependabot alerts for a repo or user')
+    .option('--repo <owner/name>', 'GitHub repo in owner/name format')
+    .option('--user <username>', 'GitHub username')
+    .option('--org <org>', 'GitHub organization')
+    .option('--include-forks', 'Include forked repos', false)
+    .option('--db <path>', 'Path to sqlite db', DEFAULT_DB_PATH)
+    .option('--since <date>', 'Filter alerts updated since ISO date')
+    .option('--json', 'Output alerts as JSON', false)
+    .option('--refresh', 'Bypass cache and fetch fresh data', false)
     .action(async (options: DependabotOptions) => {
       const target = resolveTarget(options);
       if (!target) {
@@ -62,8 +64,13 @@ export function registerDependabotCommand(program: Command): void {
       const dbPath = resolveDbPath(options.db);
       const db = openDatabase(dbPath);
 
-      if (target.type === "repo") {
-        const result = await loadRepoAlerts(db, target.repo, options.refresh ?? false);
+      const octokit = createGitHubClient();
+      if (!octokit) {
+        return;
+      }
+
+      if (target.type === 'repo') {
+        const result = await loadRepoAlerts(db, octokit, target.repo, options.refresh ?? false);
         if (!result) {
           return;
         }
@@ -79,14 +86,14 @@ export function registerDependabotCommand(program: Command): void {
         return;
       }
 
-      const repoList = await loadTargetRepos(target, options.includeForks ?? false);
+      const repoList = await loadTargetRepos(octokit, target, options.includeForks ?? false);
       if (!repoList) {
         return;
       }
 
       const results: RepoAlertsResult[] = [];
       for (const repo of repoList) {
-        const result = await loadRepoAlerts(db, repo, options.refresh ?? false);
+        const result = await loadRepoAlerts(db, octokit, repo, options.refresh ?? false);
         if (result) {
           results.push(applySinceFilter(result, sinceDate));
         }
@@ -94,14 +101,14 @@ export function registerDependabotCommand(program: Command): void {
 
       if (options.json) {
         const payload =
-          target.type === "user"
+          target.type === 'user'
             ? { user: target.username, repos: results }
             : { org: target.org, repos: results };
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
         return;
       }
 
-      if (target.type === "user") {
+      if (target.type === 'user') {
         renderUserOutput(target.username, results);
       } else {
         renderOrgOutput(target.org, results);
@@ -111,6 +118,7 @@ export function registerDependabotCommand(program: Command): void {
 
 async function loadRepoAlerts(
   db: ReturnType<typeof openDatabase>,
+  octokit: Octokit,
   repo: RepoRef,
   refresh: boolean
 ): Promise<RepoAlertsResult | null> {
@@ -120,7 +128,7 @@ async function loadRepoAlerts(
   let usedCache = !refresh && cached.hasCache;
 
   if (refresh || !cached.hasCache) {
-    const fetchedAlerts = await fetchDependabotAlerts(repo);
+    const fetchedAlerts = await fetchDependabotAlerts(octokit, repo);
     if (fetchedAlerts) {
       alerts = normalizeAlerts(repo.fullName, fetchedAlerts);
       lastSync = new Date().toISOString();
@@ -147,9 +155,9 @@ async function loadRepoAlerts(
 function resolveTarget(
   options: DependabotOptions
 ):
-  | { type: "repo"; repo: RepoRef }
-  | { type: "user"; username: string }
-  | { type: "org"; org: string }
+  | { type: 'repo'; repo: RepoRef }
+  | { type: 'user'; username: string }
+  | { type: 'org'; org: string }
   | null {
   const hasRepo = Boolean(options.repo);
   const hasUser = Boolean(options.user);
@@ -158,26 +166,26 @@ function resolveTarget(
 
   if (targetCount !== 1) {
     console.error(
-      chalk.red("Specify exactly one of --repo, --user, or --org for dependabot.")
+      chalk.red('Specify exactly one of --repo, --user, or --org for dependabot.')
     );
     process.exitCode = 1;
     return null;
   }
 
   if (options.repo) {
-    return { type: "repo", repo: parseRepo(options.repo) };
+    return { type: 'repo', repo: parseRepo(options.repo) };
   }
 
   if (options.org) {
-    return { type: "org", org: options.org };
+    return { type: 'org', org: options.org };
   }
 
-  return { type: "user", username: options.user ?? "" };
+  return { type: 'user', username: options.user ?? '' };
 }
 
 function parseRepo(repoInput: string): RepoRef {
   const repoValue = repoSchema.parse(repoInput);
-  const [owner, name] = repoValue.split("/");
+  const [owner, name] = repoValue.split('/');
   return {
     owner,
     name,
@@ -186,13 +194,14 @@ function parseRepo(repoInput: string): RepoRef {
 }
 
 async function loadTargetRepos(
-  target: { type: "user"; username: string } | { type: "org"; org: string },
+  octokit: Octokit,
+  target: { type: 'user'; username: string } | { type: 'org'; org: string },
   includeForks: boolean
 ): Promise<RepoRef[] | null> {
-  if (target.type === "user") {
-    return listUserRepos(target.username, includeForks);
+  if (target.type === 'user') {
+    return listUserRepos(octokit, target.username, includeForks);
   }
-  return listOrgRepos(target.org, includeForks);
+  return listOrgRepos(octokit, target.org, includeForks);
 }
 
 function parseSinceDate(since?: string): Date | null {
@@ -202,7 +211,7 @@ function parseSinceDate(since?: string): Date | null {
 
   const parsed = new Date(since);
   if (Number.isNaN(parsed.valueOf())) {
-    console.error(chalk.red("Invalid --since date. Use ISO format (YYYY-MM-DD)."));
+    console.error(chalk.red('Invalid --since date. Use ISO format (YYYY-MM-DD).'));
     process.exitCode = 1;
     return null;
   }

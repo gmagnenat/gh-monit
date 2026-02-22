@@ -1,0 +1,14 @@
+node_modules
+dashboard/node_modules
+dist
+.git
+.cursor
+.sidecar
+.todos
+*.md
+!shared/**
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3

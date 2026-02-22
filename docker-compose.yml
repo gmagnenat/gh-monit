@@ -1,0 +1,15 @@
+services:
+  server:
+    build: .
+    ports:
+      - '3847:3847'
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GH_MONIT_USER=${GH_MONIT_USER:-}
+      - GH_MONIT_ORG=${GH_MONIT_ORG:-}
+    volumes:
+      - gh-monit-data:/data
+    restart: unless-stopped
+
+volumes:
+  gh-monit-data:
