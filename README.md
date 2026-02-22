@@ -10,6 +10,7 @@ CLI and dashboard to fetch and monitor Dependabot alerts for GitHub repositories
 - Output results in readable text format or JSON for integration with other tools.
 - Support for including forked repositories.
 - Web dashboard with trend charts, MTTR metrics, SLA tracking, and cross-repo analytics.
+- Automatic daily refresh of all tracked repos via built-in cron scheduler.
 - Docker-ready for server deployment.
 
 ## Authentication
@@ -177,6 +178,32 @@ docker run -d \
 | `GH_MONIT_USER` | GitHub username(s) to auto-seed on first startup (comma-separated) | — |
 | `GH_MONIT_ORG` | GitHub org(s) to auto-seed on first startup (comma-separated) | — |
 | `GH_MONIT_DB_PATH` | Path to the SQLite database file | `/data/gh-monit.db` (Docker) or `~/.gh-monit/gh-monit.db` (local) |
+| `GH_MONIT_REFRESH_SCHEDULE` | Cron expression for auto-refresh schedule | `0 6 * * *` (daily at 6:00 AM) |
+
+### Auto-refresh scheduler
+
+The dashboard includes a built-in cron scheduler that automatically refreshes all tracked repos on a configurable schedule. By default, it runs daily at 6:00 AM.
+
+Configure the schedule via the `GH_MONIT_REFRESH_SCHEDULE` environment variable using standard cron syntax:
+
+```bash
+# Every 6 hours
+GH_MONIT_REFRESH_SCHEDULE="0 */6 * * *"
+
+# Twice daily at 8am and 8pm
+GH_MONIT_REFRESH_SCHEDULE="0 8,20 * * *"
+
+# Every Monday at midnight
+GH_MONIT_REFRESH_SCHEDULE="0 0 * * 1"
+```
+
+The scheduler staggers API calls with a 2-second delay between repos to stay within GitHub rate limits. If a refresh cycle is still running when the next one is scheduled, it will be skipped.
+
+Check the scheduler status via the API:
+
+```bash
+curl http://localhost:3847/api/scheduler
+```
 
 ## How it Works
 

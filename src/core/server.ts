@@ -17,6 +17,7 @@ import {
 } from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts } from './github.js';
+import { getSchedulerStatus, refreshAllRepos } from './scheduler.js';
 import type { SeverityCounts } from '../types.js';
 
 const MIME_TYPES: Record<string, string> = {
@@ -93,34 +94,12 @@ export function createServer(
   });
 
   app.post('/api/repos/refresh-all', async (c) => {
-    const repos = getAllRepoSummaries(db);
-    const results: { repo: string; success: boolean }[] = [];
+    const result = await refreshAllRepos(db, octokit);
+    return c.json(result);
+  });
 
-    for (const { repo } of repos) {
-      const [owner, name] = repo.split('/');
-      try {
-        const raw = await fetchDependabotAlerts(octokit, {
-          owner,
-          name,
-          fullName: repo,
-        });
-        if (raw) {
-          const alerts = normalizeAlerts(repo, raw);
-          saveAlerts(db, repo, alerts, new Date().toISOString());
-          results.push({ repo, success: true });
-        } else {
-          results.push({ repo, success: false });
-        }
-      } catch {
-        results.push({ repo, success: false });
-      }
-    }
-
-    return c.json({
-      refreshed: results.filter((r) => r.success).length,
-      total: repos.length,
-      results,
-    });
+  app.get('/api/scheduler', (c) => {
+    return c.json(getSchedulerStatus());
   });
 
   // --- History analytics routes ---
