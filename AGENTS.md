@@ -5,6 +5,9 @@
 You must run td usage --new-session at conversation start (or after /clear) to see current work.
 Use td usage -q for subsequent reads.
 
+## MANDATORY: Before context ends, ALWAYS run:
+td handoff <issue-id> --done "..." --remaining "..." --decision "..." --uncertain "..."
+
 ## Project Overview
 
 **gh-monit** is a Node.js CLI tool that fetches and monitors GitHub Dependabot security alerts for repositories, users, or organizations. It wraps the GitHub CLI (`gh`) to interact with the GitHub API and caches results in a local SQLite database for offline access and history tracking.
