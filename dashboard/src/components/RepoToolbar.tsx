@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { RepoSortOption, SeverityFilter } from '../api/client';
 import { SEVERITY_OPTIONS } from '../utils/severity';
 
@@ -12,6 +13,7 @@ type RepoToolbarProps = {
   bulkRefreshing: boolean;
   repoCount: number;
   filteredCount: number;
+  extraActions?: ReactNode;
 };
 
 const SORT_OPTIONS: { id: RepoSortOption; label: string }[] = [
@@ -32,6 +34,7 @@ export function RepoToolbar({
   bulkRefreshing,
   repoCount,
   filteredCount,
+  extraActions,
 }: RepoToolbarProps) {
   const toggleSeverity = (key: keyof SeverityFilter) => {
     onSeverityFilterChange({
@@ -80,6 +83,8 @@ export function RepoToolbar({
             </button>
           )}
         </div>
+
+        {extraActions}
 
         {/* Refresh All button */}
         <button

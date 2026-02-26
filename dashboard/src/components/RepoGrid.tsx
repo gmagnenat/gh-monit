@@ -7,6 +7,7 @@ type RepoGridProps = {
   isRefreshing: (repo: string) => boolean;
   onSelectRepo: (repoFullName: string) => void;
   onRefreshRepo: (owner: string, name: string) => void;
+  onRemoveRepo: (owner: string, name: string) => Promise<void>;
 };
 
 /** Responsive grid of repo cards. 3 cols on desktop, 2 on tablet, 1 on mobile. */
@@ -16,6 +17,7 @@ export function RepoGrid({
   isRefreshing,
   onSelectRepo,
   onRefreshRepo,
+  onRemoveRepo,
 }: RepoGridProps) {
   if (repos.length === 0) {
     return (
@@ -44,6 +46,7 @@ export function RepoGrid({
           isRefreshing={isRefreshing(repo.repo)}
           onSelect={onSelectRepo}
           onRefresh={onRefreshRepo}
+          onRemove={onRemoveRepo}
         />
       ))}
     </div>

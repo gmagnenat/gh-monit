@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { useDashboard } from './hooks/useDashboard';
 import { useAlertTimeline, useHistory, useVulnDep } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
+import { useSetupWizard } from './hooks/useSetupWizard';
 import { AnalyticsTab } from './components/AnalyticsTab';
 import { ErrorBanner } from './components/ErrorBanner';
 import { ExportMenu } from './components/ExportMenu';
 import { Layout } from './components/Layout';
 import { ReposTab } from './components/ReposTab';
+import { SetupWizard } from './components/SetupWizard';
+import { SettingsPanel } from './components/SettingsPanel';
 import { SummaryCards } from './components/SummaryCards';
 import { TabNav } from './components/TabNav';
-import { filterReposByName, filterReposBySeverity, sortRepos } from './api/client';
+import { deleteRepo, filterReposByName, filterReposBySeverity, sortRepos } from './api/client';
 
 type Tab = 'repos' | 'analytics';
 type AnalyticsSubTab = 'trends' | 'vulnerabilities' | 'dependencies';
@@ -19,16 +22,21 @@ const MAIN_TABS: { id: Tab; label: string }[] = [
   { id: 'analytics', label: 'Analytics' },
 ];
 
-export function App() {
-  const { theme, toggle } = useTheme();
+function NormalDashboard({
+  theme,
+  toggle,
+  onReset,
+}: {
+  theme: 'light' | 'dark';
+  toggle: () => void;
+  onReset: () => void;
+}) {
   const dashboard = useDashboard();
 
-  // Tab state
   const [activeTab, setActiveTab] = useState<Tab>('repos');
   const [analyticsSubTab, setAnalyticsSubTab] =
     useState<AnalyticsSubTab>('trends');
 
-  // Lazy-loaded analytics hooks
   const history = useHistory(
     activeTab === 'analytics' && analyticsSubTab === 'trends'
   );
@@ -38,10 +46,8 @@ export function App() {
         analyticsSubTab === 'dependencies')
   );
 
-  // Alert timeline for selected repo
   const timeline = useAlertTimeline(dashboard.selectedRepo);
 
-  // Compute sorted repos for ExportMenu (needed at top level)
   const sortedRepos = sortRepos(
     filterReposBySeverity(filterReposByName(dashboard.repos, ''), {
       critical: false,
@@ -57,11 +63,14 @@ export function App() {
       theme={theme}
       onToggleTheme={toggle}
       headerRight={
-        <ExportMenu
-          repos={sortedRepos}
-          alerts={dashboard.repoAlerts?.alerts ?? null}
-          selectedRepo={dashboard.selectedRepo}
-        />
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            repos={sortedRepos}
+            alerts={dashboard.repoAlerts?.alerts ?? null}
+            selectedRepo={dashboard.selectedRepo}
+          />
+          <SettingsPanel onReset={onReset} />
+        </div>
       }
     >
       {dashboard.error && <ErrorBanner message={dashboard.error} />}
@@ -103,6 +112,15 @@ export function App() {
               onRefreshRepo={dashboard.refreshRepo}
               onRefreshAll={dashboard.refreshAll}
               onSelectRepo={dashboard.selectRepo}
+              onAddedRepos={dashboard.reload}
+              onRemoveRepo={async (owner, name) => {
+                const fullName = `${owner}/${name}`;
+                if (dashboard.selectedRepo === fullName) {
+                  dashboard.selectRepo(null);
+                }
+                await deleteRepo(owner, name);
+                await dashboard.reload();
+              }}
             />
           )}
 
@@ -118,4 +136,33 @@ export function App() {
       )}
     </Layout>
   );
+}
+
+export function App() {
+  const { theme, toggle } = useTheme();
+  const [setupDone, setSetupDone] = useState(false);
+  const wizard = useSetupWizard({ onDone: () => setSetupDone(true) });
+
+  if (!setupDone) {
+    return (
+      <Layout theme={theme} onToggleTheme={toggle}>
+        <SetupWizard
+          state={wizard.state}
+          onToggle={wizard.toggleRepo}
+          onToggleAll={wizard.toggleAll}
+          onConfirm={wizard.confirm}
+          onSkip={wizard.skip}
+          onRetry={wizard.retry}
+          onSearchChange={wizard.setSearch}
+        />
+      </Layout>
+    );
+  }
+
+  const handleReset = () => {
+    setSetupDone(false);
+    wizard.retry();
+  };
+
+  return <NormalDashboard theme={theme} toggle={toggle} onReset={handleReset} />;
 }
