@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { RepoAlertsResponse, RepoSortOption, RepoSummary, SeverityFilter } from '../api/client';
 import { filterReposByName, filterReposBySeverity, sortRepos } from '../api/client';
 import type { TimelineState } from '../hooks/useHistory';
+import { AddReposModal } from './AddReposModal';
 import { AlertsTable } from './AlertsTable';
 import { AlertTimeline } from './AlertTimeline';
 import { RepoGrid } from './RepoGrid';
@@ -18,6 +19,8 @@ type ReposTabProps = {
   onRefreshRepo: (owner: string, name: string) => void;
   onRefreshAll: () => void;
   onSelectRepo: (repoFullName: string | null) => void;
+  onAddedRepos: () => void;
+  onRemoveRepo: (owner: string, name: string) => Promise<void>;
 };
 
 /** Repos tab content: toolbar, grid, alerts table, and timeline. */
@@ -32,7 +35,10 @@ export function ReposTab({
   onRefreshRepo,
   onRefreshAll,
   onSelectRepo,
+  onAddedRepos,
+  onRemoveRepo,
 }: ReposTabProps) {
+  const monitoredRepoNames = new Set(repos.map((r) => r.repo));
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<RepoSortOption>('name');
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>({
@@ -61,6 +67,12 @@ export function ReposTab({
         bulkRefreshing={bulkRefreshing}
         repoCount={repos.length}
         filteredCount={sortedRepos.length}
+        extraActions={
+          <AddReposModal
+            monitoredRepoNames={monitoredRepoNames}
+            onAdded={onAddedRepos}
+          />
+        }
       />
 
       <RepoGrid
@@ -73,6 +85,7 @@ export function ReposTab({
           );
         }}
         onRefreshRepo={onRefreshRepo}
+        onRemoveRepo={onRemoveRepo}
       />
 
       {selectedRepo && (

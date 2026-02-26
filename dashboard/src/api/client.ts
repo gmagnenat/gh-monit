@@ -4,6 +4,7 @@ export type {
   DependencyGroup,
   EcosystemBreakdown,
   MttrMetric,
+  RepoOption,
   RepoSummary,
   SeverityCounts,
   SlaViolation,
@@ -173,6 +174,14 @@ export function fetchRepoAlerts(
   );
 }
 
+/** Remove a tracked repo and all its alerts/history from the database. */
+export function deleteRepo(owner: string, name: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+    { method: 'DELETE' }
+  );
+}
+
 /** Fetch fresh alerts from GitHub for a repo, save, and return updated data. */
 export function refreshRepo(
   owner: string,
@@ -247,4 +256,39 @@ export function fetchDependencies(): Promise<DependencyGroup[]> {
 /** Ecosystem breakdown: alert distribution by ecosystem. */
 export function fetchEcosystems(): Promise<EcosystemBreakdown[]> {
   return request<EcosystemBreakdown[]>('/api/analytics/ecosystems');
+}
+
+// --- Setup wizard API ---
+
+import type { RepoOption } from '../../../shared/types';
+
+export type SetupStatus = { isEmpty: boolean; hasTargets: boolean };
+export type InitializeResult = {
+  seeded: number;
+  total: number;
+  results: { repo: string; success: boolean }[];
+};
+
+/** Check whether the DB is empty and env targets are configured. */
+export function fetchSetupStatus(): Promise<SetupStatus> {
+  return request<SetupStatus>('/api/setup/status');
+}
+
+/** List all repos available from GH_MONIT_USER / GH_MONIT_ORG (no alerts). */
+export function fetchAvailableRepos(): Promise<RepoOption[]> {
+  return request<RepoOption[]>('/api/setup/repos');
+}
+
+/** Seed alerts for the selected repos and return a result summary. */
+export function postInitialize(repos: RepoOption[]): Promise<InitializeResult> {
+  return request<InitializeResult>('/api/setup/initialize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repos }),
+  });
+}
+
+/** Delete all data from the database (alerts, history, sync records). */
+export function postReset(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/api/setup/reset', { method: 'POST' });
 }

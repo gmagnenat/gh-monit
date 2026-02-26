@@ -262,6 +262,22 @@ export function openDatabase(dbPath: string): Database.Database {
   return db;
 }
 
+// --- Database management ---
+
+/** Deletes all alert and sync data, leaving the schema intact. */
+export function clearDatabase(db: Database.Database): void {
+  db.exec('DELETE FROM alert_history; DELETE FROM alerts; DELETE FROM repo_sync;');
+}
+
+/** Removes all data for a single tracked repository. */
+export function removeRepo(db: Database.Database, fullName: string): void {
+  db.transaction(() => {
+    db.prepare('DELETE FROM alert_history WHERE repo = ?').run(fullName);
+    db.prepare('DELETE FROM alerts WHERE repo = ?').run(fullName);
+    db.prepare('DELETE FROM repo_sync WHERE repo = ?').run(fullName);
+  })();
+}
+
 // --- CRUD operations ---
 
 export function getCachedAlerts(

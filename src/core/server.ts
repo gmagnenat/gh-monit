@@ -4,8 +4,10 @@ import type { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  clearDatabase,
   getAlertTimeline,
   getAllRepoSummaries,
+  removeRepo,
   getDependencyLandscape,
   getEcosystemBreakdown,
   getMttrMetrics,
@@ -16,7 +18,7 @@ import {
   saveAlerts,
 } from './db.js';
 import { normalizeAlerts } from './alerts.js';
-import { fetchDependabotAlerts } from './github.js';
+import { fetchDependabotAlerts, listOrgRepos, listUserRepos } from './github.js';
 import { getSchedulerStatus, refreshAllRepos } from './scheduler.js';
 import type { SeverityCounts } from '../types.js';
 
@@ -73,6 +75,14 @@ export function createServer(
     const fullName = `${owner}/${name}`;
     const result = getRepoAlerts(db, fullName);
     return c.json(result);
+  });
+
+  app.delete('/api/repos/:owner/:name', (c) => {
+    const owner = c.req.param('owner');
+    const name = c.req.param('name');
+    const fullName = `${owner}/${name}`;
+    removeRepo(db, fullName);
+    return c.json({ ok: true });
   });
 
   app.post('/api/repos/:owner/:name/refresh', async (c) => {
@@ -144,6 +154,60 @@ export function createServer(
   app.get('/api/analytics/ecosystems', (c) => {
     const data = getEcosystemBreakdown(db);
     return c.json(data);
+  });
+
+  // --- Setup wizard routes ---
+
+  app.get('/api/setup/status', (c) => {
+    const repos = getAllRepoSummaries(db);
+    const isEmpty = repos.length === 0;
+    const hasTargets = !!(process.env.GH_MONIT_USER || process.env.GH_MONIT_ORG);
+    return c.json({ isEmpty, hasTargets });
+  });
+
+  app.get('/api/setup/repos', async (c) => {
+    const user = process.env.GH_MONIT_USER;
+    const org = process.env.GH_MONIT_ORG;
+    if (!user && !org) return c.json([]);
+
+    const targets = [
+      ...(user ? user.split(',').map((u) => ({ type: 'user' as const, value: u.trim() })) : []),
+      ...(org  ? org.split(',').map((o) => ({ type: 'org'  as const, value: o.trim() })) : []),
+    ];
+
+    const all: { owner: string; name: string; fullName: string }[] = [];
+    for (const target of targets) {
+      const list = target.type === 'user'
+        ? await listUserRepos(octokit, target.value, false)
+        : await listOrgRepos(octokit, target.value, false);
+      if (list) all.push(...list);
+    }
+    return c.json(all);
+  });
+
+  app.post('/api/setup/reset', (c) => {
+    clearDatabase(db);
+    return c.json({ ok: true });
+  });
+
+  app.post('/api/setup/initialize', async (c) => {
+    const body = await c.req.json<{ repos: { owner: string; name: string; fullName: string }[] }>();
+    const selected = body.repos ?? [];
+    if (selected.length === 0) return c.json({ seeded: 0, total: 0, results: [] });
+
+    const results: { repo: string; success: boolean }[] = [];
+    for (const repo of selected) {
+      const raw = await fetchDependabotAlerts(octokit, repo);
+      if (raw) {
+        const alerts = normalizeAlerts(repo.fullName, raw);
+        saveAlerts(db, repo.fullName, alerts, new Date().toISOString());
+        results.push({ repo: repo.fullName, success: true });
+      } else {
+        results.push({ repo: repo.fullName, success: false });
+      }
+    }
+    const seeded = results.filter((r) => r.success).length;
+    return c.json({ seeded, total: selected.length, results });
   });
 
   // --- Static file serving with SPA fallback ---

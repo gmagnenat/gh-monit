@@ -78,3 +78,10 @@ export type EcosystemBreakdown = {
   affectedRepos: number;
   uniquePackages: number;
 };
+
+/** Lightweight repo metadata returned by the setup wizard API. */
+export type RepoOption = {
+  owner: string;
+  name: string;
+  fullName: string;
+};
