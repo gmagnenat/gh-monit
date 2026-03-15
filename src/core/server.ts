@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { swaggerUI } from '@hono/swagger-ui';
 import type Database from 'better-sqlite3';
 import type { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { openapiSpec } from './openapi.js';
 import {
   clearDatabase,
   getAlertTimeline,
@@ -76,6 +78,11 @@ export function createServer(
     summaryCache.invalidate();
     reposCache.invalidate();
   }
+
+  // --- API documentation ---
+
+  app.get('/api/openapi.json', (c) => c.json(openapiSpec));
+  app.get('/docs', swaggerUI({ url: '/api/openapi.json' }));
 
   // --- API routes ---
 

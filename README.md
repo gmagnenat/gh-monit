@@ -11,6 +11,7 @@ CLI and dashboard to fetch and monitor Dependabot alerts for GitHub repositories
 - Support for including forked repositories.
 - Web dashboard with trend charts, MTTR metrics, SLA tracking, and cross-repo analytics.
 - Automatic daily refresh of all tracked repos via built-in cron scheduler.
+- Interactive API documentation via Swagger UI at `/docs`.
 - Docker-ready for server deployment.
 
 ## Authentication
@@ -156,6 +157,28 @@ curl -X POST http://localhost:3847/api/repos/owner/repo/refresh
 # Refresh all tracked repos
 curl -X POST http://localhost:3847/api/repos/refresh-all
 ```
+
+## API Documentation
+
+The dashboard exposes a REST API. Interactive documentation is available at `/docs` (Swagger UI) once the server is running:
+
+```
+http://localhost:3847/docs
+```
+
+The raw OpenAPI 3.0 spec is also served at `/api/openapi.json`, which can be imported into tools like Postman or Insomnia.
+
+**Endpoint groups:**
+
+| Group | Endpoints |
+|---|---|
+| Dashboard | `GET /api/summary`, `GET /api/repos` |
+| Repos | `GET /api/repos/:owner/:name/alerts`, `POST /api/repos/:owner/:name/refresh`, `DELETE /api/repos/:owner/:name` |
+| Bulk refresh | `POST /api/repos/refresh-all` (SSE stream) |
+| History | `GET /api/history/trends`, `GET /api/history/mttr`, `GET /api/history/sla`, `GET /api/repos/:owner/:name/history` |
+| Analytics | `GET /api/analytics/vulnerabilities`, `GET /api/analytics/dependencies`, `GET /api/analytics/ecosystems` |
+| Setup | `GET /api/setup/status`, `GET /api/setup/repos`, `POST /api/setup/initialize`, `POST /api/setup/reset` |
+| Scheduler | `GET /api/scheduler` |
 
 ### Using Docker directly
 
