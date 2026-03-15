@@ -8,7 +8,7 @@ import {
   fetchRepoAlerts,
   fetchRepos,
   fetchSummary,
-  refreshAllRepos,
+  refreshAllReposStream,
   refreshRepo,
 } from '../api/client';
 import { parseRepo } from '../utils/repo';
@@ -24,6 +24,8 @@ type RepoLoadingState = {
   refreshing: Set<string>;
   loadingAlerts: Set<string>;
   bulkRefreshing: boolean;
+  refreshProgress: { completed: number; total: number } | null;
+  refreshDone: boolean;
 };
 
 const POLL_INTERVAL_MS = 60_000;
@@ -45,6 +47,8 @@ export function useDashboard() {
     refreshing: new Set(),
     loadingAlerts: new Set(),
     bulkRefreshing: false,
+    refreshProgress: null,
+    refreshDone: false,
   });
 
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
@@ -54,6 +58,7 @@ export function useDashboard() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval>>(null);
+  const clearDoneRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Fetch global summary and repo list. */
   const loadDashboard = useCallback(async () => {
@@ -104,16 +109,21 @@ export function useDashboard() {
     [selectedRepo, loadDashboard]
   );
 
-  /** Refresh all tracked repos from GitHub. */
+  /** Refresh all tracked repos from GitHub with SSE progress streaming. */
   const handleRefreshAll = useCallback(async () => {
-    setRepoLoading((prev) => ({ ...prev, bulkRefreshing: true }));
+    if (clearDoneRef.current) { clearTimeout(clearDoneRef.current); clearDoneRef.current = null; }
+
+    setRepoLoading((prev) => ({ ...prev, bulkRefreshing: true, refreshDone: false, refreshProgress: null }));
 
     try {
       setRefreshError(null);
-      await refreshAllRepos();
-      // Reload dashboard to get updated summary + repo list
+      await refreshAllReposStream((progress) => {
+        setRepoLoading((prev) => ({
+          ...prev,
+          refreshProgress: { completed: progress.completed, total: progress.total },
+        }));
+      });
       await loadDashboard();
-      // If a repo is selected, refresh its alerts too
       if (selectedRepo) {
         const parsed = parseRepo(selectedRepo);
         if (parsed) {
@@ -121,12 +131,16 @@ export function useDashboard() {
           setRepoAlerts(result);
         }
       }
+
+      setRepoLoading((prev) => ({ ...prev, bulkRefreshing: false, refreshDone: true }));
+      clearDoneRef.current = setTimeout(() => {
+        setRepoLoading((prev) => ({ ...prev, refreshDone: false, refreshProgress: null }));
+        clearDoneRef.current = null;
+      }, 3000);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to refresh all repos';
+      const message = err instanceof Error ? err.message : 'Failed to refresh all repos';
       setRefreshError(message);
-    } finally {
-      setRepoLoading((prev) => ({ ...prev, bulkRefreshing: false }));
+      setRepoLoading((prev) => ({ ...prev, bulkRefreshing: false, refreshDone: false, refreshProgress: null }));
     }
   }, [loadDashboard, selectedRepo]);
 
@@ -163,16 +177,32 @@ export function useDashboard() {
     }
   }, []);
 
+  // Cleanup the auto-clear timer on unmount
+  useEffect(() => () => { if (clearDoneRef.current) clearTimeout(clearDoneRef.current); }, []);
+
   // Initial load
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  // Auto-polling every 60 seconds
+  // Auto-polling every 60 seconds — paused while tab is hidden
   useEffect(() => {
-    pollRef.current = setInterval(loadDashboard, POLL_INTERVAL_MS);
+    function startPoll() {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(() => {
+        if (!document.hidden) loadDashboard();
+      }, POLL_INTERVAL_MS);
+    }
+
+    function handleVisibilityChange() {
+      if (!document.hidden) loadDashboard();
+    }
+
+    startPoll();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [loadDashboard]);
 
@@ -182,6 +212,8 @@ export function useDashboard() {
     repoAlerts,
     refreshError,
     bulkRefreshing: repoLoading.bulkRefreshing,
+    refreshProgress: repoLoading.refreshProgress,
+    refreshDone: repoLoading.refreshDone,
     isRefreshing: (repo: string) => repoLoading.refreshing.has(repo),
     isLoadingAlerts: (repo: string) => repoLoading.loadingAlerts.has(repo),
     refreshRepo: handleRefreshRepo,

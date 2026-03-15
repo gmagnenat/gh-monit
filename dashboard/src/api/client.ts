@@ -208,6 +208,54 @@ export function refreshAllRepos(): Promise<BulkRefreshResponse> {
   });
 }
 
+export type BulkRefreshProgress = {
+  completed: number;
+  total: number;
+  repo: string;
+  success: boolean;
+};
+
+export type BulkRefreshDone = {
+  refreshed: number;
+  failed: number;
+  total: number;
+};
+
+/** Refresh all tracked repos via SSE stream, calling onProgress for each repo. */
+export async function refreshAllReposStream(
+  onProgress: (event: BulkRefreshProgress) => void
+): Promise<BulkRefreshDone> {
+  const response = await fetch('/api/repos/refresh-all', { method: 'POST' });
+  if (!response.ok || !response.body) throw new ApiError(response.status, 'Stream failed');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+
+    for (const frame of frames) {
+      let eventType = 'message', dataLine = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+        else if (line.startsWith('data: ')) dataLine = line.slice(6).trim();
+      }
+      if (!dataLine) continue;
+      const payload = JSON.parse(dataLine);
+      if (eventType === 'progress') onProgress(payload as BulkRefreshProgress);
+      else if (eventType === 'done') return payload as BulkRefreshDone;
+      else if (eventType === 'error') throw new Error(payload.message);
+    }
+  }
+  throw new Error('Stream ended without a done event');
+}
+
 // --- History analytics fetchers ---
 
 import type { AlertTimelineEntry, MttrMetric, SlaViolation, TrendPoint } from '../../../shared/types';

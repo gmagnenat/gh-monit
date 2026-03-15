@@ -1,5 +1,6 @@
 # IDE / editor metadata
 .cursor/
+.claude/
 .sidecar/
 
 # Build artifacts
@@ -20,3 +21,9 @@ node_modules
 dist
 dashboard/node_modules
 .todos/
+.sidecar-agent
+.sidecar-task
+.sidecar-pr
+.sidecar-start.sh
+.sidecar-base
+.td-root

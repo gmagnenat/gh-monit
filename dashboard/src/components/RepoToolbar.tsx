@@ -11,6 +11,8 @@ type RepoToolbarProps = {
   onSeverityFilterChange: (filter: SeverityFilter) => void;
   onRefreshAll: () => void;
   bulkRefreshing: boolean;
+  refreshProgress: { completed: number; total: number } | null;
+  refreshDone: boolean;
   repoCount: number;
   filteredCount: number;
   extraActions?: ReactNode;
@@ -32,6 +34,8 @@ export function RepoToolbar({
   onSeverityFilterChange,
   onRefreshAll,
   bulkRefreshing,
+  refreshProgress,
+  refreshDone,
   repoCount,
   filteredCount,
   extraActions,
@@ -86,27 +90,43 @@ export function RepoToolbar({
 
         {extraActions}
 
-        {/* Refresh All button */}
-        <button
-          onClick={onRefreshAll}
-          disabled={bulkRefreshing}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-        >
-          <svg
-            className={`h-4 w-4 ${bulkRefreshing ? 'animate-spin' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {/* Refresh All button — three states: default / counting / done */}
+        {refreshDone ? (
+          <button
+            disabled
+            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-90 dark:bg-green-500"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          {bulkRefreshing ? 'Refreshing...' : 'Refresh All'}
-        </button>
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Done
+          </button>
+        ) : (
+          <button
+            onClick={onRefreshAll}
+            disabled={bulkRefreshing}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+          >
+            <svg
+              className={`h-4 w-4 ${bulkRefreshing ? 'animate-spin' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {bulkRefreshing
+              ? refreshProgress != null
+                ? `${refreshProgress.completed} / ${refreshProgress.total}`
+                : 'Starting...'
+              : 'Refresh All'}
+          </button>
+        )}
       </div>
 
       {/* Row 2: Sort + Severity Filter + Count */}

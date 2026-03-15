@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { RepoSummary } from '../api/client';
 import { formatRelativeTime } from '../utils/date';
 import { parseRepo } from '../utils/repo';
@@ -14,7 +14,7 @@ type RepoCardProps = {
 };
 
 /** Per-repo card with severity breakdown bar, sync time, refresh and remove. */
-export function RepoCard({
+export const RepoCard = memo(function RepoCard({
   repo,
   isSelected,
   isRefreshing,
@@ -172,4 +172,4 @@ export function RepoCard({
       </div>
     </div>
   );
-}
+});

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import type Database from 'better-sqlite3';
 import type { Octokit } from '@octokit/rest';
 import fs from 'node:fs';
@@ -7,6 +8,7 @@ import {
   clearDatabase,
   getAlertTimeline,
   getAllRepoSummaries,
+  getGlobalSummary,
   removeRepo,
   getDependencyLandscape,
   getEcosystemBreakdown,
@@ -35,6 +37,26 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+const TTL_MS = 30_000;
+
+type CacheEntry<T> = { data: T; expiresAt: number };
+
+function makeCache<T>() {
+  let entry: CacheEntry<T> | null = null;
+  return {
+    get(): T | null {
+      if (entry && Date.now() < entry.expiresAt) return entry.data;
+      return null;
+    },
+    set(data: T) {
+      entry = { data, expiresAt: Date.now() + TTL_MS };
+    },
+    invalidate() {
+      entry = null;
+    },
+  };
+}
+
 /**
  * Creates a Hono app with API routes and static file serving.
  * The server reads from the SQLite database and delegates GitHub
@@ -47,25 +69,31 @@ export function createServer(
 ): Hono {
   const app = new Hono();
 
+  const summaryCache = makeCache<ReturnType<typeof getGlobalSummary>>();
+  const reposCache = makeCache<ReturnType<typeof getAllRepoSummaries>>();
+
+  function invalidateDashboardCache() {
+    summaryCache.invalidate();
+    reposCache.invalidate();
+  }
+
   // --- API routes ---
 
   app.get('/api/summary', (c) => {
-    const repos = getAllRepoSummaries(db);
-    const totalRepos = repos.length;
-    const totalAlerts = repos.reduce((sum, r) => sum + r.totalAlerts, 0);
-
-    const severityCounts: SeverityCounts = {};
-    for (const repo of repos) {
-      for (const [severity, count] of Object.entries(repo.severityCounts)) {
-        severityCounts[severity] = (severityCounts[severity] ?? 0) + count;
-      }
+    let result = summaryCache.get();
+    if (!result) {
+      result = getGlobalSummary(db);
+      summaryCache.set(result);
     }
-
-    return c.json({ totalRepos, totalAlerts, severityCounts });
+    return c.json(result);
   });
 
   app.get('/api/repos', (c) => {
-    const repos = getAllRepoSummaries(db);
+    let repos = reposCache.get();
+    if (!repos) {
+      repos = getAllRepoSummaries(db);
+      reposCache.set(repos);
+    }
     return c.json(repos);
   });
 
@@ -82,6 +110,7 @@ export function createServer(
     const name = c.req.param('name');
     const fullName = `${owner}/${name}`;
     removeRepo(db, fullName);
+    invalidateDashboardCache();
     return c.json({ ok: true });
   });
 
@@ -98,14 +127,28 @@ export function createServer(
     const alerts = normalizeAlerts(fullName, raw);
     const lastSync = new Date().toISOString();
     saveAlerts(db, fullName, alerts, lastSync);
+    invalidateDashboardCache();
 
     const updated = getRepoAlerts(db, fullName);
     return c.json(updated);
   });
 
-  app.post('/api/repos/refresh-all', async (c) => {
-    const result = await refreshAllRepos(db, octokit);
-    return c.json(result);
+  app.post('/api/repos/refresh-all', (c) => {
+    return streamSSE(c, async (stream) => {
+      const repos = getAllRepoSummaries(db);
+      await stream.writeSSE({ event: 'start', data: JSON.stringify({ total: repos.length }) });
+
+      const result = await refreshAllRepos(db, octokit, async (progress) => {
+        await stream.writeSSE({ event: 'progress', data: JSON.stringify(progress) });
+      });
+
+      invalidateDashboardCache();
+
+      await stream.writeSSE({
+        event: 'done',
+        data: JSON.stringify({ refreshed: result.refreshed, failed: result.failed, total: result.total }),
+      });
+    });
   });
 
   app.get('/api/scheduler', (c) => {
@@ -187,6 +230,7 @@ export function createServer(
 
   app.post('/api/setup/reset', (c) => {
     clearDatabase(db);
+    invalidateDashboardCache();
     return c.json({ ok: true });
   });
 
@@ -201,6 +245,7 @@ export function createServer(
       if (raw) {
         const alerts = normalizeAlerts(repo.fullName, raw);
         saveAlerts(db, repo.fullName, alerts, new Date().toISOString());
+        invalidateDashboardCache();
         results.push({ repo: repo.fullName, success: true });
       } else {
         results.push({ repo: repo.fullName, success: false });

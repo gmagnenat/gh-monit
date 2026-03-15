@@ -13,6 +13,13 @@ export type RefreshResult = {
   results: { repo: string; success: boolean }[];
 };
 
+export type RefreshProgressEvent = {
+  completed: number;
+  total: number;
+  repo: string;
+  success: boolean;
+};
+
 export type SchedulerState = {
   running: boolean;
   lastRun: string | null;
@@ -67,7 +74,8 @@ function getNextRunDate(expression: string): string | null {
  */
 export async function refreshAllRepos(
   db: Database.Database,
-  octokit: Octokit
+  octokit: Octokit,
+  onProgress?: (event: RefreshProgressEvent) => void | Promise<void>
 ): Promise<RefreshResult> {
   const repos = getAllRepoSummaries(db);
   const results: { repo: string; success: boolean }[] = [];
@@ -91,6 +99,11 @@ export async function refreshAllRepos(
       }
     } catch {
       results.push({ repo, success: false });
+    }
+
+    if (onProgress) {
+      const last = results[results.length - 1];
+      await onProgress({ completed: results.length, total: repos.length, repo, success: last.success });
     }
 
     if (i < repos.length - 1) {

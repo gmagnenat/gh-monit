@@ -14,6 +14,8 @@ type ReposTabProps = {
   repoAlerts: RepoAlertsResponse | null;
   timeline: TimelineState;
   bulkRefreshing: boolean;
+  refreshProgress: { completed: number; total: number } | null;
+  refreshDone: boolean;
   isRefreshing: (repo: string) => boolean;
   isLoadingAlerts: (repo: string) => boolean;
   onRefreshRepo: (owner: string, name: string) => void;
@@ -30,6 +32,8 @@ export function ReposTab({
   repoAlerts,
   timeline,
   bulkRefreshing,
+  refreshProgress,
+  refreshDone,
   isRefreshing,
   isLoadingAlerts,
   onRefreshRepo,
@@ -65,6 +69,8 @@ export function ReposTab({
         onSeverityFilterChange={setSeverityFilter}
         onRefreshAll={onRefreshAll}
         bulkRefreshing={bulkRefreshing}
+        refreshProgress={refreshProgress}
+        refreshDone={refreshDone}
         repoCount={repos.length}
         filteredCount={sortedRepos.length}
         extraActions={

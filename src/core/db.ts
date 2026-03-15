@@ -210,6 +210,17 @@ const migrations: Migration[] = [
     },
   },
   {
+    version: 3,
+    up: (db) => {
+      db.exec(
+        [
+          "CREATE INDEX IF NOT EXISTS idx_alerts_repo_state ON alerts(repo, state);",
+          "CREATE INDEX IF NOT EXISTS idx_history_repo_alert ON alert_history(repo, alert_number, state);",
+        ].join("\n")
+      );
+    },
+  },
+  {
     version: 2,
     up: (db) => {
       const columns = [
@@ -367,6 +378,61 @@ export function saveAlerts(
 
 // --- Read queries ---
 
+const globalSummaryRowSchema = z.object({
+  totalRepos: z.number(),
+  totalAlerts: z.number(),
+  severity: z.string().nullable(),
+  count: z.number(),
+});
+
+/**
+ * Returns global summary totals (total repos, total alerts, per-severity counts)
+ * without fetching per-repo breakdowns — cheaper than getAllRepoSummaries().
+ */
+export function getGlobalSummary(
+  db: Database.Database
+): { totalRepos: number; totalAlerts: number; severityCounts: Record<string, number> } {
+  const rows = queryAll(
+    db,
+    [
+      "SELECT",
+      "  (SELECT COUNT(*) FROM repo_sync) AS total_repos,",
+      "  COUNT(a.alert_number) AS total_alerts,",
+      "  a.severity,",
+      "  COUNT(a.alert_number) AS count",
+      "FROM alerts a",
+      "WHERE a.state = 'open'",
+      "GROUP BY a.severity",
+    ].join(" "),
+    globalSummaryRowSchema
+  );
+
+  const severityCounts: Record<string, number> = {};
+  let totalAlerts = 0;
+  let totalRepos = 0;
+
+  for (const row of rows) {
+    totalRepos = row.totalRepos;
+    if (row.severity) {
+      const key = row.severity.toLowerCase();
+      severityCounts[key] = row.count;
+      totalAlerts += row.count;
+    }
+  }
+
+  // Handle case with no open alerts (rows will be empty)
+  if (rows.length === 0) {
+    const countRow = queryGet(
+      db,
+      "SELECT COUNT(*) AS total_repos FROM repo_sync",
+      z.object({ totalRepos: z.number() })
+    );
+    totalRepos = countRow?.totalRepos ?? 0;
+  }
+
+  return { totalRepos, totalAlerts, severityCounts };
+}
+
 /**
  * Returns all tracked repos with their severity counts and last sync time.
  * Pivots grouped rows into RepoSummary objects in code.
@@ -480,19 +546,22 @@ export function getMttrMetrics(
   return queryAll(
     db,
     [
-      "SELECT h1.repo, h1.severity,",
-      "  AVG(julianday(h2.recorded_at) - julianday(h1.recorded_at)) AS avg_days,",
+      "WITH first_events AS (",
+      "  SELECT repo, alert_number, state, severity,",
+      "         MIN(id) AS first_id, MIN(recorded_at) AS first_at",
+      "  FROM alert_history",
+      "  GROUP BY repo, alert_number, state",
+      ")",
+      "SELECT open_ev.repo, open_ev.severity,",
+      "  AVG(julianday(res_ev.first_at) - julianday(open_ev.first_at)) AS avg_days,",
       "  COUNT(*) AS resolved_count",
-      "FROM alert_history h1",
-      "JOIN alert_history h2",
-      "  ON h1.repo = h2.repo AND h1.alert_number = h2.alert_number",
-      "WHERE h1.state = 'open' AND h2.state IN ('fixed', 'dismissed')",
-      "  AND h1.id = (SELECT MIN(id) FROM alert_history",
-      "               WHERE repo = h1.repo AND alert_number = h1.alert_number AND state = 'open')",
-      "  AND h2.id = (SELECT MIN(id) FROM alert_history",
-      "               WHERE repo = h1.repo AND alert_number = h1.alert_number AND state IN ('fixed', 'dismissed'))",
-      "  AND (h1.repo = @repo OR @repo IS NULL)",
-      "GROUP BY h1.repo, h1.severity",
+      "FROM first_events open_ev",
+      "JOIN first_events res_ev",
+      "  ON open_ev.repo = res_ev.repo AND open_ev.alert_number = res_ev.alert_number",
+      "WHERE open_ev.state = 'open'",
+      "  AND res_ev.state IN ('fixed', 'dismissed')",
+      "  AND (open_ev.repo = @repo OR @repo IS NULL)",
+      "GROUP BY open_ev.repo, open_ev.severity",
     ].join(" "),
     mttrRowSchema,
     { repo: repo ?? null }
@@ -531,14 +600,17 @@ export function getSlaViolations(
   const rows = queryAll(
     db,
     [
+      "WITH first_open AS (",
+      "  SELECT repo, alert_number, MIN(recorded_at) AS first_at",
+      "  FROM alert_history",
+      "  GROUP BY repo, alert_number",
+      ")",
       "SELECT a.repo, a.alert_number, a.severity, a.package_name, a.html_url,",
-      "  h.recorded_at AS first_seen,",
-      "  julianday('now') - julianday(h.recorded_at) AS open_days",
+      "  fo.first_at AS first_seen,",
+      "  julianday('now') - julianday(fo.first_at) AS open_days",
       "FROM alerts a",
-      "JOIN alert_history h ON a.repo = h.repo AND a.alert_number = h.alert_number",
+      "JOIN first_open fo ON a.repo = fo.repo AND a.alert_number = fo.alert_number",
       "WHERE a.state = 'open'",
-      "  AND h.id = (SELECT MIN(id) FROM alert_history",
-      "              WHERE repo = a.repo AND alert_number = a.alert_number)",
     ].join(" "),
     slaRowSchema
   );

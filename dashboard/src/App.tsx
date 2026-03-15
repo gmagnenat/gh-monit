@@ -107,6 +107,8 @@ function NormalDashboard({
               repoAlerts={dashboard.repoAlerts}
               timeline={timeline}
               bulkRefreshing={dashboard.bulkRefreshing}
+              refreshProgress={dashboard.refreshProgress}
+              refreshDone={dashboard.refreshDone}
               isRefreshing={dashboard.isRefreshing}
               isLoadingAlerts={dashboard.isLoadingAlerts}
               onRefreshRepo={dashboard.refreshRepo}
