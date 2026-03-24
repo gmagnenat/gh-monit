@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { CronExpressionParser } from 'cron-parser';
 import type Database from 'better-sqlite3';
 import type { Octokit } from '@octokit/rest';
 import chalk from 'chalk';
@@ -46,23 +47,8 @@ function delay(ms: number): Promise<void> {
 
 function getNextRunDate(expression: string): string | null {
   try {
-    const interval = cron.getTasks();
-    const now = new Date();
-    const parts = expression.split(' ');
-    if (parts.length !== 5) return null;
-
-    const [minute, hour] = parts;
-    const next = new Date(now);
-
-    const targetHour = hour === '*' ? now.getHours() : Number(hour);
-    const targetMinute = minute === '*' ? now.getMinutes() : Number(minute);
-
-    next.setHours(targetHour, targetMinute, 0, 0);
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
-    }
-
-    return next.toISOString();
+    const interval = CronExpressionParser.parse(expression);
+    return interval.next().toISOString();
   } catch {
     return null;
   }
