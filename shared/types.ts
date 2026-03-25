@@ -85,3 +85,39 @@ export type RepoOption = {
   name: string;
   fullName: string;
 };
+
+/** Individual alert within a fix action group. */
+export type FixActionAlert = {
+  repo?: string;
+  alertNumber: number;
+  severity: string;
+  summary: string | null;
+};
+
+/** A grouped fix recommendation for a single package. */
+export type FixAction = {
+  packageName: string;
+  ecosystem: string | null;
+  manifestPaths: string[];
+  scope: string | null;
+  groupSeverity: string;
+  alertCount: number;
+  severityBreakdown: SeverityCounts;
+  ghsaIds: string[];
+  cveIds: string[];
+  maxCvssScore: number | null;
+  patchedVersion: string | null;
+  hasFix: boolean;
+  affectedRepos?: number;
+  repos?: string[];
+  alerts: FixActionAlert[];
+};
+
+/** Fix advisor response with fixable and unfixable groups. */
+export type FixAdvisorResponse = {
+  repo: string;
+  totalActions: number;
+  totalAlerts: number;
+  actions: FixAction[];
+  noFixAvailable: FixAction[];
+};

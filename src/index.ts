@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { registerDashboardCommand } from "./cli/dashboard.js";
 import { registerDependabotCommand } from "./cli/dependabot.js";
+import { registerFixPlanCommand } from "./cli/fix-plan.js";
 
 const program = new Command();
 
@@ -11,6 +12,7 @@ program
 
 registerDependabotCommand(program);
 registerDashboardCommand(program);
+registerFixPlanCommand(program);
 
 program.parseAsync(process.argv).catch((error: Error) => {
   console.error("Unexpected error:", error.message);
