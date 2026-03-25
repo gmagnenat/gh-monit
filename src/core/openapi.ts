@@ -19,6 +19,7 @@ export const openapiSpec = {
     { name: 'History', description: 'Trend, MTTR, SLA and timeline analytics' },
     { name: 'Analytics', description: 'Cross-repo vulnerability and dependency insights' },
     { name: 'Setup', description: 'Initial setup wizard and database reset' },
+    { name: 'Fix Advisor', description: 'Grouped fix recommendations for Dependabot alerts' },
     { name: 'Scheduler', description: 'Background refresh scheduler status' },
   ],
   paths: {
@@ -345,6 +346,46 @@ export const openapiSpec = {
         },
       },
     },
+    '/api/fix-advisor': {
+      get: {
+        tags: ['Fix Advisor'],
+        summary: 'Cross-repo fix plan',
+        description: 'Returns grouped fix recommendations across all tracked repositories. Alerts are grouped by package name and ecosystem, with severity breakdown and patched version info.',
+        operationId: 'getFixAdvisor',
+        responses: {
+          '200': {
+            description: 'Fix advisor response',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FixAdvisorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/repos/{owner}/{name}/fix-advisor': {
+      get: {
+        tags: ['Fix Advisor'],
+        summary: 'Repo fix plan',
+        description: 'Returns grouped fix recommendations for a specific repository.',
+        operationId: 'getRepoFixAdvisor',
+        parameters: [
+          { $ref: '#/components/parameters/owner' },
+          { $ref: '#/components/parameters/name' },
+        ],
+        responses: {
+          '200': {
+            description: 'Fix advisor response for the repository',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FixAdvisorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/setup/status': {
       get: {
         tags: ['Setup'],
@@ -580,6 +621,49 @@ export const openapiSpec = {
           uniquePackages: { type: 'integer' },
         },
         required: ['ecosystem', 'totalAlerts', 'affectedRepos', 'uniquePackages'],
+      },
+      FixActionAlert: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Only present in cross-repo responses' },
+          alertNumber: { type: 'integer' },
+          severity: { type: 'string' },
+          summary: { type: 'string', nullable: true },
+        },
+        required: ['alertNumber', 'severity'],
+      },
+      FixAction: {
+        type: 'object',
+        description: 'A grouped fix recommendation for a single package',
+        properties: {
+          packageName: { type: 'string' },
+          ecosystem: { type: 'string', nullable: true },
+          manifestPaths: { type: 'array', items: { type: 'string' } },
+          scope: { type: 'string', nullable: true },
+          groupSeverity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'unknown'] },
+          alertCount: { type: 'integer' },
+          severityBreakdown: { $ref: '#/components/schemas/SeverityCounts' },
+          ghsaIds: { type: 'array', items: { type: 'string' } },
+          cveIds: { type: 'array', items: { type: 'string' } },
+          maxCvssScore: { type: 'number', nullable: true },
+          patchedVersion: { type: 'string', nullable: true },
+          hasFix: { type: 'boolean' },
+          affectedRepos: { type: 'integer', description: 'Only present in cross-repo responses' },
+          repos: { type: 'array', items: { type: 'string' }, description: 'Only present in cross-repo responses' },
+          alerts: { type: 'array', items: { $ref: '#/components/schemas/FixActionAlert' } },
+        },
+        required: ['packageName', 'groupSeverity', 'alertCount', 'hasFix', 'alerts'],
+      },
+      FixAdvisorResponse: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: '"all" for cross-repo, or "owner/name" for single repo' },
+          totalActions: { type: 'integer' },
+          totalAlerts: { type: 'integer' },
+          actions: { type: 'array', items: { $ref: '#/components/schemas/FixAction' }, description: 'Fixable groups sorted by severity' },
+          noFixAvailable: { type: 'array', items: { $ref: '#/components/schemas/FixAction' }, description: 'Groups with no patched version available' },
+        },
+        required: ['repo', 'totalActions', 'totalAlerts', 'actions', 'noFixAvailable'],
       },
       SchedulerStatus: {
         type: 'object',
