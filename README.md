@@ -12,6 +12,7 @@ CLI and dashboard to fetch and monitor Dependabot alerts for GitHub repositories
 - Web dashboard with trend charts, MTTR metrics, SLA tracking, and cross-repo analytics.
 - Automatic daily refresh of all tracked repos via built-in cron scheduler.
 - Interactive API documentation via Swagger UI at `/docs`.
+- Fix plan advisor: grouped fix recommendations by package, severity, and ecosystem.
 - Docker-ready for server deployment.
 
 ## Authentication
@@ -72,6 +73,31 @@ Fetch Dependabot alerts for a repo, user, or organization.
 - `--since <date>`: Filter alerts updated since the specified ISO date (e.g., `2023-01-01`).
 - `--json`: Output the results in JSON format.
 - `--refresh`: Bypass the cache and force a fresh fetch from the GitHub API.
+
+#### `fix-plan`
+
+Show grouped fix recommendations for Dependabot alerts. Groups alerts by package, severity, and ecosystem, and shows the patched version to update to.
+
+**Options:**
+
+- `--repo <owner/name>`: Show fix plan for a specific repo (default: all tracked repos).
+- `--db <path>`: Path to the SQLite database file (default: `~/.gh-monit/gh-monit.db`).
+- `--json`: Output the results in JSON format.
+
+```bash
+# Fix plan for all tracked repos
+gh-monit fix-plan
+
+# Fix plan for a specific repo
+gh-monit fix-plan --repo owner/repo
+
+# JSON output for scripting
+gh-monit fix-plan --repo owner/repo --json
+```
+
+The fix plan is also available in the dashboard:
+- **Repo detail view** — click a repo, then the **Fix Plan** tab
+- **Analytics** — the **Fix Plan** sub-tab shows cross-repo recommendations
 
 #### `dashboard`
 
@@ -177,6 +203,7 @@ The raw OpenAPI 3.0 spec is also served at `/api/openapi.json`, which can be imp
 | Bulk refresh | `POST /api/repos/refresh-all` (SSE stream) |
 | History | `GET /api/history/trends`, `GET /api/history/mttr`, `GET /api/history/sla`, `GET /api/repos/:owner/:name/history` |
 | Analytics | `GET /api/analytics/vulnerabilities`, `GET /api/analytics/dependencies`, `GET /api/analytics/ecosystems` |
+| Fix Advisor | `GET /api/fix-advisor`, `GET /api/repos/:owner/:name/fix-advisor` |
 | Setup | `GET /api/setup/status`, `GET /api/setup/repos`, `POST /api/setup/initialize`, `POST /api/setup/reset` |
 | Scheduler | `GET /api/scheduler` |
 
