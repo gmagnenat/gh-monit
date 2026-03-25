@@ -128,12 +128,29 @@ export function registerDashboardCommand(program: Command): void {
 
       });
 
-      process.on('SIGINT', () => {
+      let shuttingDown = false;
+      const shutdown = () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+
         console.log(chalk.gray('\nShutting down...'));
         stopScheduler();
-        server.close();
-        db.close();
-        process.exit(0);
-      });
+
+        const forceExit = setTimeout(() => {
+          console.warn(chalk.yellow('Shutdown timed out, forcing exit'));
+          db.close();
+          process.exit(1);
+        }, 5000);
+        forceExit.unref();
+
+        server.close(() => {
+          clearTimeout(forceExit);
+          db.close();
+          process.exit(0);
+        });
+      };
+
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     });
 }
