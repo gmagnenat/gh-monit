@@ -10,6 +10,7 @@ import {
   clearDatabase,
   getAlertTimeline,
   getAllRepoSummaries,
+  getFixAdvisor,
   getGlobalSummary,
   removeRepo,
   getDependencyLandscape,
@@ -203,6 +204,21 @@ export function createServer(
 
   app.get('/api/analytics/ecosystems', (c) => {
     const data = getEcosystemBreakdown(db);
+    return c.json(data);
+  });
+
+  // --- Fix advisor routes ---
+
+  app.get('/api/repos/:owner/:name/fix-advisor', (c) => {
+    const owner = c.req.param('owner');
+    const name = c.req.param('name');
+    const fullName = `${owner}/${name}`;
+    const data = getFixAdvisor(db, fullName);
+    return c.json(data);
+  });
+
+  app.get('/api/fix-advisor', (c) => {
+    const data = getFixAdvisor(db);
     return c.json(data);
   });
 
