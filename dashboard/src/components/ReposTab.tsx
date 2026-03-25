@@ -2,17 +2,28 @@ import { useState } from 'react';
 import type { RepoAlertsResponse, RepoSortOption, RepoSummary, SeverityFilter } from '../api/client';
 import { filterReposByName, filterReposBySeverity, sortRepos } from '../api/client';
 import type { TimelineState } from '../hooks/useHistory';
+import type { FixAdvisorState } from '../hooks/useFixAdvisor';
 import { AddReposModal } from './AddReposModal';
 import { AlertsTable } from './AlertsTable';
 import { AlertTimeline } from './AlertTimeline';
+import { FixPlanTable } from './FixPlanTable';
 import { RepoGrid } from './RepoGrid';
 import { RepoToolbar } from './RepoToolbar';
+import { TabNav } from './TabNav';
+
+type RepoDetailTab = 'alerts' | 'fix-plan';
+
+const DETAIL_TABS: { id: RepoDetailTab; label: string }[] = [
+  { id: 'alerts', label: 'Alerts' },
+  { id: 'fix-plan', label: 'Fix Plan' },
+];
 
 type ReposTabProps = {
   repos: RepoSummary[];
   selectedRepo: string | null;
   repoAlerts: RepoAlertsResponse | null;
   timeline: TimelineState;
+  fixAdvisor: FixAdvisorState;
   bulkRefreshing: boolean;
   refreshProgress: { completed: number; total: number } | null;
   refreshDone: boolean;
@@ -31,6 +42,7 @@ export function ReposTab({
   selectedRepo,
   repoAlerts,
   timeline,
+  fixAdvisor,
   bulkRefreshing,
   refreshProgress,
   refreshDone,
@@ -45,6 +57,7 @@ export function ReposTab({
   const monitoredRepoNames = new Set(repos.map((r) => r.repo));
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<RepoSortOption>('name');
+  const [detailTab, setDetailTab] = useState<RepoDetailTab>('alerts');
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>({
     critical: false,
     high: false,
@@ -96,15 +109,29 @@ export function ReposTab({
 
       {selectedRepo && (
         <>
-          <AlertsTable
-            alerts={repoAlerts?.alerts ?? []}
-            repoFullName={selectedRepo}
-            isLoading={isLoadingAlerts(selectedRepo)}
-          />
-          <AlertTimeline
-            entries={timeline.entries}
-            loading={timeline.loading}
-          />
+          <TabNav tabs={DETAIL_TABS} activeTab={detailTab} onTabChange={setDetailTab} />
+
+          {detailTab === 'alerts' && (
+            <>
+              <AlertsTable
+                alerts={repoAlerts?.alerts ?? []}
+                repoFullName={selectedRepo}
+                isLoading={isLoadingAlerts(selectedRepo)}
+              />
+              <AlertTimeline
+                entries={timeline.entries}
+                loading={timeline.loading}
+              />
+            </>
+          )}
+
+          {detailTab === 'fix-plan' && (
+            <FixPlanTable
+              data={fixAdvisor.data}
+              loading={fixAdvisor.loading}
+              error={fixAdvisor.error}
+            />
+          )}
         </>
       )}
     </>

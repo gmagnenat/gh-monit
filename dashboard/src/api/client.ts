@@ -3,6 +3,9 @@ export type {
   AlertTimelineEntry,
   DependencyGroup,
   EcosystemBreakdown,
+  FixAction,
+  FixActionAlert,
+  FixAdvisorResponse,
   MttrMetric,
   RepoOption,
   RepoSummary,
@@ -304,6 +307,25 @@ export function fetchDependencies(): Promise<DependencyGroup[]> {
 /** Ecosystem breakdown: alert distribution by ecosystem. */
 export function fetchEcosystems(): Promise<EcosystemBreakdown[]> {
   return request<EcosystemBreakdown[]>('/api/analytics/ecosystems');
+}
+
+// --- Fix advisor API ---
+
+import type { FixAdvisorResponse } from '../../../shared/types';
+
+/** Per-repo fix advisor: grouped fix recommendations. */
+export function fetchFixAdvisor(
+  owner: string,
+  name: string
+): Promise<FixAdvisorResponse> {
+  return request<FixAdvisorResponse>(
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/fix-advisor`
+  );
+}
+
+/** Cross-repo fix advisor: aggregated across all repos. */
+export function fetchCrossRepoFixAdvisor(): Promise<FixAdvisorResponse> {
+  return request<FixAdvisorResponse>('/api/fix-advisor');
 }
 
 // --- Setup wizard API ---
