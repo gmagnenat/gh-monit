@@ -8,6 +8,8 @@ import type {
   AlertTimelineEntry,
   DependencyGroup,
   EcosystemBreakdown,
+  FixAction,
+  FixAdvisorResponse,
   MttrMetric,
   NormalizedAlert,
   RepoSummary,
@@ -686,6 +688,207 @@ export function getDependencyLandscape(
     ].join(" "),
     depRowSchema
   );
+}
+
+// --- Fix Advisor ---
+
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  unknown: 4,
+};
+
+function severityRank(s: string): number {
+  return SEVERITY_RANK[s.toLowerCase()] ?? 4;
+}
+
+const fixAdvisorGroupSchema = z.object({
+  packageName: z.string(),
+  ecosystem: z.string().nullable(),
+  manifestPaths: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+  ghsaIds: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+  cveIds: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+  maxCvssScore: z.number().nullable(),
+  alertCount: z.number(),
+  affectedRepos: z.number(),
+  repos: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+  patchedVersion: z.string().nullable(),
+});
+
+const fixAdvisorAlertSchema = z.object({
+  repo: z.string(),
+  alertNumber: z.number(),
+  severity: z.string().transform((s) => s.toLowerCase()),
+  advisorySummary: z.string().nullable(),
+  rawJson: z.string(),
+  packageName: z.string(),
+  ecosystem: z.string().nullable(),
+});
+
+/**
+ * Groups open alerts by (package_name, ecosystem) into fix actions.
+ * When repo is provided, scopes to that repo; otherwise aggregates cross-repo.
+ */
+export function getFixAdvisor(
+  db: Database.Database,
+  repo?: string | null
+): FixAdvisorResponse {
+  const isPerRepo = !!repo;
+
+  const groups = queryAll(
+    db,
+    [
+      "SELECT package_name, ecosystem,",
+      "  GROUP_CONCAT(DISTINCT manifest_path) AS manifest_paths,",
+      "  GROUP_CONCAT(DISTINCT ghsa_id) AS ghsa_ids,",
+      "  GROUP_CONCAT(DISTINCT cve_id) AS cve_ids,",
+      "  MAX(cvss_score) AS max_cvss_score,",
+      "  COUNT(*) AS alert_count,",
+      "  COUNT(DISTINCT repo) AS affected_repos,",
+      "  GROUP_CONCAT(DISTINCT repo) AS repos,",
+      "  MAX(patched_version) AS patched_version",
+      "FROM alerts",
+      "WHERE state = 'open' AND package_name IS NOT NULL",
+      isPerRepo ? "  AND repo = @repo" : "",
+      "GROUP BY package_name, ecosystem",
+    ].join(" "),
+    fixAdvisorGroupSchema,
+    isPerRepo ? { repo } : undefined
+  );
+
+  // Fetch individual alerts to build per-group alert lists and severity breakdowns
+  const alertDetails = queryAll(
+    db,
+    [
+      "SELECT repo, alert_number, severity, advisory_summary, raw_json,",
+      "  package_name, ecosystem",
+      "FROM alerts",
+      "WHERE state = 'open' AND package_name IS NOT NULL",
+      isPerRepo ? "  AND repo = @repo" : "",
+      "ORDER BY",
+      "  CASE LOWER(severity)",
+      "    WHEN 'critical' THEN 0 WHEN 'high' THEN 1",
+      "    WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4",
+      "  END,",
+      "  alert_number",
+    ].join(" "),
+    fixAdvisorAlertSchema,
+    isPerRepo ? { repo } : undefined
+  );
+
+  // Build lookup: "packageName|ecosystem" -> alert details
+  const alertsByKey = new Map<string, typeof alertDetails>();
+  for (const alert of alertDetails) {
+    const key = `${alert.packageName}|${alert.ecosystem ?? ""}`;
+    let list = alertsByKey.get(key);
+    if (!list) {
+      list = [];
+      alertsByKey.set(key, list);
+    }
+    list.push(alert);
+  }
+
+  // Build fix actions
+  const actions: FixAction[] = [];
+  const noFixAvailable: FixAction[] = [];
+
+  for (const group of groups) {
+    const key = `${group.packageName}|${group.ecosystem ?? ""}`;
+    const groupAlerts = alertsByKey.get(key) ?? [];
+
+    // Compute severity breakdown
+    const severityBreakdown: Record<string, number> = {};
+    let bestSeverity = "unknown";
+    let bestRank = 4;
+
+    for (const alert of groupAlerts) {
+      const sev = alert.severity;
+      severityBreakdown[sev] = (severityBreakdown[sev] ?? 0) + 1;
+      const rank = severityRank(sev);
+      if (rank < bestRank) {
+        bestRank = rank;
+        bestSeverity = sev;
+      }
+    }
+
+    // Extract scope from first alert's raw JSON
+    let scope: string | null = null;
+    if (groupAlerts.length > 0) {
+      try {
+        const raw = JSON.parse(groupAlerts[0].rawJson);
+        scope = raw?.dependency?.scope ?? null;
+      } catch {
+        // ignore malformed JSON
+      }
+    }
+
+    const hasFix = group.patchedVersion !== null;
+    const action: FixAction = {
+      packageName: group.packageName,
+      ecosystem: group.ecosystem,
+      manifestPaths: group.manifestPaths,
+      scope,
+      groupSeverity: bestSeverity,
+      alertCount: group.alertCount,
+      severityBreakdown,
+      ghsaIds: group.ghsaIds,
+      cveIds: group.cveIds,
+      maxCvssScore: group.maxCvssScore,
+      patchedVersion: group.patchedVersion,
+      hasFix,
+      alerts: groupAlerts.map((a) => ({
+        ...(isPerRepo ? {} : { repo: a.repo }),
+        alertNumber: a.alertNumber,
+        severity: a.severity,
+        summary: a.advisorySummary,
+      })),
+    };
+
+    if (!isPerRepo) {
+      action.affectedRepos = group.affectedRepos;
+      action.repos = group.repos;
+    }
+
+    if (hasFix) {
+      actions.push(action);
+    } else {
+      noFixAvailable.push(action);
+    }
+  }
+
+  // Sort: severity desc, then alert count desc within tier
+  const sortActions = (a: FixAction, b: FixAction) => {
+    const sevDiff = severityRank(a.groupSeverity) - severityRank(b.groupSeverity);
+    if (sevDiff !== 0) return sevDiff;
+    return b.alertCount - a.alertCount;
+  };
+  actions.sort(sortActions);
+  noFixAvailable.sort(sortActions);
+
+  const totalAlerts = actions.reduce((s, a) => s + a.alertCount, 0)
+    + noFixAvailable.reduce((s, a) => s + a.alertCount, 0);
+
+  return {
+    repo: repo ?? "all",
+    totalActions: actions.length,
+    totalAlerts,
+    actions,
+    noFixAvailable,
+  };
 }
 
 /**
