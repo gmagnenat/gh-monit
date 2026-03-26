@@ -14,10 +14,13 @@ import {
   getDependencyLandscape,
   getEcosystemBreakdown,
   getAlertTimeline,
+  getActionPlan,
+  saveDependencyChains,
   clearDatabase,
   removeRepo,
 } from "../db.js";
 import type { NormalizedAlert } from "../../types.js";
+import type { DependencyChain } from "../lockfile.js";
 
 // --- Helpers ---
 
@@ -551,5 +554,103 @@ describe("removeRepo", () => {
 
     expect(getCachedAlerts(db, "owner/repo-a").hasCache).toBe(false);
     expect(getCachedAlerts(db, "owner/repo-b").hasCache).toBe(true);
+  });
+});
+
+// --- saveDependencyChains & getActionPlan ---
+
+describe("saveDependencyChains", () => {
+  it("saves and retrieves dependency chains via action plan", () => {
+    saveAlerts(
+      db,
+      "owner/repo",
+      [
+        makeAlert({ alertNumber: 1, packageName: "loader-utils", severity: "critical" }),
+        makeAlert({ alertNumber: 2, packageName: "minimist", severity: "high" }),
+      ],
+      "2024-03-01T00:00:00Z"
+    );
+
+    const chains: DependencyChain[] = [
+      {
+        repo: "owner/repo",
+        vulnerablePackage: "loader-utils",
+        directDependency: "react-scripts",
+        directVersion: "5.0.1",
+        chainDepth: 1,
+      },
+      {
+        repo: "owner/repo",
+        vulnerablePackage: "minimist",
+        directDependency: "react-scripts",
+        directVersion: "5.0.1",
+        chainDepth: 1,
+      },
+    ];
+
+    saveDependencyChains(db, chains);
+
+    const plan = getActionPlan(db);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].directDependency).toBe("react-scripts");
+    expect(plan[0].directVersion).toBe("5.0.1");
+    expect(plan[0].criticalAlerts).toBe(1);
+    expect(plan[0].highAlerts).toBe(1);
+    expect(plan[0].totalAlerts).toBe(2);
+    expect(plan[0].affectedRepos).toBe(1);
+    expect(plan[0].vulnerablePackages).toContain("loader-utils");
+    expect(plan[0].vulnerablePackages).toContain("minimist");
+  });
+
+  it("aggregates across repos", () => {
+    saveAlerts(
+      db,
+      "owner/repo-a",
+      [makeAlert({ repo: "owner/repo-a", alertNumber: 1, packageName: "loader-utils", severity: "critical" })],
+      "2024-03-01T00:00:00Z"
+    );
+    saveAlerts(
+      db,
+      "owner/repo-b",
+      [makeAlert({ repo: "owner/repo-b", alertNumber: 1, packageName: "loader-utils", severity: "critical" })],
+      "2024-03-01T00:00:00Z"
+    );
+
+    saveDependencyChains(db, [
+      { repo: "owner/repo-a", vulnerablePackage: "loader-utils", directDependency: "react-scripts", directVersion: "5.0.1", chainDepth: 1 },
+      { repo: "owner/repo-b", vulnerablePackage: "loader-utils", directDependency: "webpack", directVersion: "4.0.0", chainDepth: 1 },
+    ]);
+
+    const plan = getActionPlan(db);
+    expect(plan).toHaveLength(2);
+    // Both should have 1 critical alert each
+    expect(plan.every((p) => p.criticalAlerts === 1)).toBe(true);
+  });
+
+  it("returns empty plan when no chains exist", () => {
+    const plan = getActionPlan(db);
+    expect(plan).toHaveLength(0);
+  });
+
+  it("upserts on re-save", () => {
+    saveAlerts(
+      db,
+      "owner/repo",
+      [makeAlert({ alertNumber: 1, packageName: "lodash", severity: "high" })],
+      "2024-03-01T00:00:00Z"
+    );
+
+    saveDependencyChains(db, [
+      { repo: "owner/repo", vulnerablePackage: "lodash", directDependency: "old-parent", directVersion: "1.0.0", chainDepth: 1 },
+    ]);
+
+    // Update the chain
+    saveDependencyChains(db, [
+      { repo: "owner/repo", vulnerablePackage: "lodash", directDependency: "new-parent", directVersion: "2.0.0", chainDepth: 1 },
+    ]);
+
+    const plan = getActionPlan(db);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].directDependency).toBe("new-parent");
   });
 });

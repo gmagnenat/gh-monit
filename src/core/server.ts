@@ -10,8 +10,10 @@ import {
   clearDatabase,
   getAlertTimeline,
   getAllRepoSummaries,
+  getActionPlan,
   getFixAdvisor,
   getGlobalSummary,
+  saveDependencyChains,
   removeRepo,
   getDependencyLandscape,
   getEcosystemBreakdown,
@@ -24,6 +26,7 @@ import {
 } from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts, listOrgRepos, listUserRepos } from './github.js';
+import { fetchLockFile, resolveAllChains } from './lockfile.js';
 import { getSchedulerStatus, refreshAllRepos } from './scheduler.js';
 import type { SeverityCounts } from '../types.js';
 
@@ -135,6 +138,23 @@ export function createServer(
     const alerts = normalizeAlerts(fullName, raw);
     const lastSync = new Date().toISOString();
     saveAlerts(db, fullName, alerts, lastSync);
+
+    // Resolve dependency chains
+    const openPackages = alerts
+      .filter((a) => a.state === 'open' && a.packageName)
+      .map((a) => a.packageName!);
+    if (openPackages.length > 0) {
+      try {
+        const lockFile = await fetchLockFile(octokit, owner, name);
+        if (lockFile) {
+          const chains = resolveAllChains(fullName, lockFile, openPackages);
+          saveDependencyChains(db, chains);
+        }
+      } catch {
+        // best-effort
+      }
+    }
+
     invalidateDashboardCache();
 
     const updated = getRepoAlerts(db, fullName);
@@ -220,6 +240,13 @@ export function createServer(
   app.get('/api/fix-advisor', (c) => {
     const data = getFixAdvisor(db);
     return c.json(data);
+  });
+
+  // --- Action plan (dependency chain analysis) ---
+
+  app.get('/api/analytics/action-plan', (c) => {
+    const plan = getActionPlan(db);
+    return c.json(plan);
   });
 
   // --- Setup wizard routes ---
