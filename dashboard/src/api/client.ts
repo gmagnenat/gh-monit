@@ -1,5 +1,6 @@
 // Re-export shared types from the single source of truth
 export type {
+  ActionPlanEntry,
   AlertTimelineEntry,
   DependencyGroup,
   EcosystemBreakdown,
@@ -326,6 +327,11 @@ export function fetchFixAdvisor(
 /** Cross-repo fix advisor: aggregated across all repos. */
 export function fetchCrossRepoFixAdvisor(): Promise<FixAdvisorResponse> {
   return request<FixAdvisorResponse>('/api/fix-advisor');
+}
+
+/** Action plan: direct dependencies to update, ranked by impact. */
+export function fetchActionPlan(): Promise<import('../../../shared/types').ActionPlanEntry[]> {
+  return request<import('../../../shared/types').ActionPlanEntry[]>('/api/analytics/action-plan');
 }
 
 // --- Setup wizard API ---
