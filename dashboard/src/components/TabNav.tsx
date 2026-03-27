@@ -11,7 +11,7 @@ export function TabNav<T extends string>({
   onTabChange,
 }: TabNavProps<T>) {
   return (
-    <div className="flex gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800">
+    <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800">
       {tabs.map((tab) => (
         <button
           key={tab.id}

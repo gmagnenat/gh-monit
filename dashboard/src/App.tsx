@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDashboard } from './hooks/useDashboard';
 import { useActionPlan } from './hooks/useActionPlan';
-import { useCrossRepoFixAdvisor, useRepoFixAdvisor } from './hooks/useFixAdvisor';
+import { useRepoFixAdvisor } from './hooks/useFixAdvisor';
 import { useAlertTimeline, useHistory, useVulnDep } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
 import { useSetupWizard } from './hooks/useSetupWizard';
@@ -48,9 +48,6 @@ function NormalDashboard({
         analyticsSubTab === 'dependencies')
   );
 
-  const crossRepoFixAdvisor = useCrossRepoFixAdvisor(
-    activeTab === 'analytics' && analyticsSubTab === 'fix-plan'
-  );
   const actionPlan = useActionPlan(
     activeTab === 'analytics' && analyticsSubTab === 'action-plan'
   );
@@ -141,7 +138,6 @@ function NormalDashboard({
             <AnalyticsTab
               history={history}
               vulnDep={vulnDep}
-              fixAdvisor={crossRepoFixAdvisor}
               actionPlan={actionPlan}
               activeSubTab={analyticsSubTab}
               onSubTabChange={setAnalyticsSubTab}
