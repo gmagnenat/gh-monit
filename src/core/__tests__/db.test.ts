@@ -588,7 +588,7 @@ describe("saveDependencyChains", () => {
       },
     ];
 
-    saveDependencyChains(db, chains);
+    saveDependencyChains(db, "owner/repo", chains);
 
     const plan = getActionPlan(db);
     expect(plan).toHaveLength(1);
@@ -616,8 +616,10 @@ describe("saveDependencyChains", () => {
       "2024-03-01T00:00:00Z"
     );
 
-    saveDependencyChains(db, [
+    saveDependencyChains(db, "owner/repo-a", [
       { repo: "owner/repo-a", vulnerablePackage: "loader-utils", directDependency: "react-scripts", directVersion: "5.0.1", chainDepth: 1 },
+    ]);
+    saveDependencyChains(db, "owner/repo-b", [
       { repo: "owner/repo-b", vulnerablePackage: "loader-utils", directDependency: "webpack", directVersion: "4.0.0", chainDepth: 1 },
     ]);
 
@@ -640,12 +642,12 @@ describe("saveDependencyChains", () => {
       "2024-03-01T00:00:00Z"
     );
 
-    saveDependencyChains(db, [
+    saveDependencyChains(db, "owner/repo", [
       { repo: "owner/repo", vulnerablePackage: "lodash", directDependency: "old-parent", directVersion: "1.0.0", chainDepth: 1 },
     ]);
 
-    // Update the chain
-    saveDependencyChains(db, [
+    // Update the chain — should clear old data and replace
+    saveDependencyChains(db, "owner/repo", [
       { repo: "owner/repo", vulnerablePackage: "lodash", directDependency: "new-parent", directVersion: "2.0.0", chainDepth: 1 },
     ]);
 

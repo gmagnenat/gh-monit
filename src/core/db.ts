@@ -930,16 +930,18 @@ const CHAIN_FIELDS = [
  */
 export function saveDependencyChains(
   db: Database.Database,
+  repo: string,
   chains: DependencyChain[]
 ): void {
-  if (chains.length === 0) return;
-
   const stmt = db.prepare(
     buildUpsert("dependency_chain", CHAIN_FIELDS, ["repo", "vulnerablePackage"])
   );
 
   const now = new Date().toISOString();
   const transaction = db.transaction(() => {
+    // Clear old chains for this repo before saving new ones
+    db.prepare("DELETE FROM dependency_chain WHERE repo = ?").run(repo);
+
     for (const chain of chains) {
       stmt.run({ ...chain, updatedAt: now });
     }

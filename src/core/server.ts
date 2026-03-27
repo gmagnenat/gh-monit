@@ -26,7 +26,7 @@ import {
 } from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts, listOrgRepos, listUserRepos } from './github.js';
-import { fetchLockFile, resolveAllChains } from './lockfile.js';
+import { fetchLockFile, fetchPackageJson, resolveAllChains } from './lockfile.js';
 import { getSchedulerStatus, refreshAllRepos } from './scheduler.js';
 import type { SeverityCounts } from '../types.js';
 
@@ -145,10 +145,13 @@ export function createServer(
       .map((a) => a.packageName!);
     if (openPackages.length > 0) {
       try {
-        const lockFile = await fetchLockFile(octokit, owner, name);
-        if (lockFile) {
-          const chains = resolveAllChains(fullName, lockFile, openPackages);
-          saveDependencyChains(db, chains);
+        const [packageJson, lockFile] = await Promise.all([
+          fetchPackageJson(octokit, owner, name),
+          fetchLockFile(octokit, owner, name),
+        ]);
+        if (packageJson && lockFile) {
+          const chains = resolveAllChains(fullName, packageJson, lockFile, openPackages);
+          saveDependencyChains(db, fullName, chains);
         }
       } catch {
         // best-effort

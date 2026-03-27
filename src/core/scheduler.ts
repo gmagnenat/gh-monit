@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { getAllRepoSummaries, saveAlerts, saveDependencyChains } from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts } from './github.js';
-import { fetchLockFile, resolveAllChains } from './lockfile.js';
+import { fetchLockFile, fetchPackageJson, resolveAllChains } from './lockfile.js';
 
 export type RefreshResult = {
   refreshed: number;
@@ -88,10 +88,13 @@ export async function refreshAllRepos(
 
         if (openPackages.length > 0) {
           try {
-            const lockFile = await fetchLockFile(octokit, owner, name);
-            if (lockFile) {
-              const chains = resolveAllChains(repo, lockFile, openPackages);
-              saveDependencyChains(db, chains);
+            const [packageJson, lockFile] = await Promise.all([
+              fetchPackageJson(octokit, owner, name),
+              fetchLockFile(octokit, owner, name),
+            ]);
+            if (packageJson && lockFile) {
+              const chains = resolveAllChains(repo, packageJson, lockFile, openPackages);
+              saveDependencyChains(db, repo, chains);
             }
           } catch {
             // Lock file resolution is best-effort — don't fail the sync
