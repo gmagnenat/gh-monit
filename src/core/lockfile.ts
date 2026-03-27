@@ -8,9 +8,15 @@ export type DependencyChain = {
   chainDepth: number;
 };
 
+type PackageLockEntry = {
+  version?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
 type PackageLockV2 = {
-  packages?: Record<string, { version?: string; dependencies?: Record<string, string> }>;
-  dependencies?: Record<string, { version?: string; requires?: Record<string, string> }>;
+  packages?: Record<string, PackageLockEntry>;
+  dependencies?: Record<string, { version?: string; requires?: Record<string, string>; dependencies?: Record<string, unknown> }>;
 };
 
 /**
@@ -40,11 +46,29 @@ export async function fetchLockFile(
 }
 
 /**
+ * Gets the set of direct dependency names from the root package entry.
+ * These are packages the developer actually controls in their package.json.
+ */
+function getRootDependencies(
+  packages: Record<string, PackageLockEntry>
+): Set<string> {
+  const rootPkg = packages[''] ?? packages['.'];
+  const names = new Set<string>();
+  if (rootPkg?.dependencies) {
+    for (const name of Object.keys(rootPkg.dependencies)) names.add(name);
+  }
+  if (rootPkg?.devDependencies) {
+    for (const name of Object.keys(rootPkg.devDependencies)) names.add(name);
+  }
+  return names;
+}
+
+/**
  * Resolves which direct (top-level) dependency pulls in a vulnerable transitive package.
  *
- * For package-lock.json v2/v3: walks the `packages` map.
- * Top-level deps are at `node_modules/<name>`, nested deps at deeper paths.
- * We trace upward from the vulnerable package to find which top-level dep requires it.
+ * "Direct" means listed in the root package.json dependencies or devDependencies.
+ * For hoisted packages that aren't in package.json, we walk the dependency tree
+ * to find which root-level package transitively requires it.
  */
 export function resolveDirectDependency(
   lockFile: PackageLockV2,
@@ -65,14 +89,14 @@ export function resolveDirectDependency(
 }
 
 function resolveFromPackagesMap(
-  packages: Record<string, { version?: string; dependencies?: Record<string, string> }>,
+  packages: Record<string, PackageLockEntry>,
   vulnerablePackage: string
 ): { directDependency: string; directVersion: string | null; chainDepth: number } | null {
-  // Check if vulnerable package is itself a direct dependency
-  const directKey = `node_modules/${vulnerablePackage}`;
-  const rootPkg = packages[''] ?? packages['.'];
+  const rootDeps = getRootDependencies(packages);
 
-  if (rootPkg?.dependencies?.[vulnerablePackage]) {
+  // If the vulnerable package is itself a direct dependency
+  if (rootDeps.has(vulnerablePackage)) {
+    const directKey = `node_modules/${vulnerablePackage}`;
     return {
       directDependency: vulnerablePackage,
       directVersion: packages[directKey]?.version ?? null,
@@ -80,9 +104,10 @@ function resolveFromPackagesMap(
     };
   }
 
-  // Find all paths where this package appears
+  // Find all paths where this package appears in the lock file
   const vulnPaths: string[] = [];
   for (const key of Object.keys(packages)) {
+    if (key === '' || key === '.') continue;
     const segments = key.split('node_modules/');
     const pkgName = segments[segments.length - 1];
     if (pkgName === vulnerablePackage) {
@@ -92,35 +117,74 @@ function resolveFromPackagesMap(
 
   if (vulnPaths.length === 0) return null;
 
-  // For each path, walk upward to find the top-level dependency
+  // For each path, walk upward through the node_modules segments
+  // to find the first ancestor that IS a root dependency
   for (const vulnPath of vulnPaths) {
     const segments = vulnPath.split('node_modules/').filter(Boolean);
 
-    if (segments.length <= 1) {
-      // It's a direct dependency
+    // Walk from the outermost ancestor toward the vulnerable package
+    for (let i = 0; i < segments.length - 1; i++) {
+      const candidate = segments[i].replace(/\/$/, '');
+      if (rootDeps.has(candidate)) {
+        const candidateKey = `node_modules/${candidate}`;
+        return {
+          directDependency: candidate,
+          directVersion: packages[candidateKey]?.version ?? null,
+          chainDepth: segments.length - 1 - i,
+        };
+      }
+    }
+  }
+
+  // Fallback: if no root dep found in the path, try reverse lookup.
+  // Check which root deps transitively depend on the vulnerable package
+  // by scanning all packages for dependency references.
+  for (const rootDep of rootDeps) {
+    if (dependsOn(packages, rootDep, vulnerablePackage, new Set())) {
+      const rootKey = `node_modules/${rootDep}`;
       return {
-        directDependency: vulnerablePackage,
-        directVersion: packages[vulnPath]?.version ?? null,
-        chainDepth: 0,
+        directDependency: rootDep,
+        directVersion: packages[rootKey]?.version ?? null,
+        chainDepth: -1, // unknown depth
       };
     }
-
-    // The first segment is the top-level package
-    const topLevel = segments[0].replace(/\/$/, '');
-    const topLevelKey = `node_modules/${topLevel}`;
-
-    return {
-      directDependency: topLevel,
-      directVersion: packages[topLevelKey]?.version ?? null,
-      chainDepth: segments.length - 1,
-    };
   }
 
   return null;
 }
 
+/**
+ * Checks if `parent` transitively depends on `target` by walking the packages map.
+ * Uses a visited set to avoid cycles.
+ */
+function dependsOn(
+  packages: Record<string, PackageLockEntry>,
+  parent: string,
+  target: string,
+  visited: Set<string>
+): boolean {
+  if (visited.has(parent)) return false;
+  visited.add(parent);
+
+  // Check nested path first (parent's own node_modules)
+  const nestedKey = `node_modules/${parent}/node_modules/${target}`;
+  if (nestedKey in packages) return true;
+
+  // Check parent's dependencies and recurse
+  const parentKey = `node_modules/${parent}`;
+  const parentPkg = packages[parentKey];
+  if (parentPkg?.dependencies) {
+    for (const dep of Object.keys(parentPkg.dependencies)) {
+      if (dep === target) return true;
+      if (dependsOn(packages, dep, target, visited)) return true;
+    }
+  }
+
+  return false;
+}
+
 function resolveFromDependenciesTree(
-  dependencies: Record<string, { version?: string; requires?: Record<string, string> }>,
+  dependencies: Record<string, { version?: string; requires?: Record<string, string>; dependencies?: Record<string, unknown> }>,
   vulnerablePackage: string
 ): { directDependency: string; directVersion: string | null; chainDepth: number } | null {
   // Check if it's a direct dependency
@@ -134,7 +198,7 @@ function resolveFromDependenciesTree(
 
   // Search which direct dependency requires the vulnerable package (transitively)
   for (const [depName, depInfo] of Object.entries(dependencies)) {
-    if (depInfo.requires && vulnerablePackage in depInfo.requires) {
+    if (requiresTransitively(depInfo, vulnerablePackage, new Set())) {
       return {
         directDependency: depName,
         directVersion: depInfo.version ?? null,
@@ -144,6 +208,30 @@ function resolveFromDependenciesTree(
   }
 
   return null;
+}
+
+/**
+ * Recursively checks if a v1 dependency entry requires the target package.
+ */
+function requiresTransitively(
+  depInfo: { requires?: Record<string, string>; dependencies?: Record<string, unknown> },
+  target: string,
+  visited: Set<string>
+): boolean {
+  if (depInfo.requires && target in depInfo.requires) return true;
+
+  if (depInfo.dependencies) {
+    for (const [name, nested] of Object.entries(depInfo.dependencies)) {
+      if (name === target) return true;
+      if (visited.has(name)) continue;
+      visited.add(name);
+      if (typeof nested === 'object' && nested !== null) {
+        if (requiresTransitively(nested as typeof depInfo, target, visited)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
