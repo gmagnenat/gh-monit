@@ -121,3 +121,15 @@ export type FixAdvisorResponse = {
   actions: FixAction[];
   noFixAvailable: FixAction[];
 };
+
+/** Action plan entry: a direct dependency to update, ranked by impact. */
+export type ActionPlanEntry = {
+  directDependency: string;
+  directVersion: string | null;
+  criticalAlerts: number;
+  highAlerts: number;
+  totalAlerts: number;
+  affectedRepos: number;
+  repos: string[];
+  vulnerablePackages: string[];
+};

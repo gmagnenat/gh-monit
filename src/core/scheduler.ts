@@ -3,9 +3,10 @@ import { CronExpressionParser } from 'cron-parser';
 import type Database from 'better-sqlite3';
 import type { Octokit } from '@octokit/rest';
 import chalk from 'chalk';
-import { getAllRepoSummaries, saveAlerts } from './db.js';
+import { getAllRepoSummaries, saveAlerts, saveDependencyChains } from './db.js';
 import { normalizeAlerts } from './alerts.js';
 import { fetchDependabotAlerts } from './github.js';
+import { fetchLockFile, fetchPackageJson, resolveAllChains } from './lockfile.js';
 
 export type RefreshResult = {
   refreshed: number;
@@ -79,6 +80,27 @@ export async function refreshAllRepos(
       if (raw) {
         const alerts = normalizeAlerts(repo, raw);
         saveAlerts(db, repo, alerts, new Date().toISOString());
+
+        // Resolve dependency chains from lock file
+        const openPackages = alerts
+          .filter((a) => a.state === 'open' && a.packageName)
+          .map((a) => a.packageName!);
+
+        if (openPackages.length > 0) {
+          try {
+            const [packageJson, lockFile] = await Promise.all([
+              fetchPackageJson(octokit, owner, name),
+              fetchLockFile(octokit, owner, name),
+            ]);
+            if (packageJson && lockFile) {
+              const chains = resolveAllChains(repo, packageJson, lockFile, openPackages);
+              saveDependencyChains(db, repo, chains);
+            }
+          } catch {
+            // Lock file resolution is best-effort — don't fail the sync
+          }
+        }
+
         results.push({ repo, success: true });
       } else {
         results.push({ repo, success: false });

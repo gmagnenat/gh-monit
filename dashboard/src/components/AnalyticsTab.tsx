@@ -1,29 +1,28 @@
-import { useState } from 'react';
 import type { HistoryState, VulnDepState } from '../hooks/useHistory';
-import type { FixAdvisorState } from '../hooks/useFixAdvisor';
+import type { ActionPlanEntry } from '../api/client';
+import { ActionPlanTable } from './ActionPlanTable';
 import { DependencyTable } from './DependencyTable';
 import { EcosystemChart } from './EcosystemChart';
 import { ErrorBanner } from './ErrorBanner';
-import { FixPlanTable } from './FixPlanTable';
 import { MttrCards } from './MttrCards';
 import { SlaPanel } from './SlaPanel';
 import { TabNav } from './TabNav';
 import { TrendChart } from './TrendChart';
 import { VulnerabilityTable } from './VulnerabilityTable';
 
-type AnalyticsSubTab = 'trends' | 'vulnerabilities' | 'dependencies' | 'fix-plan';
+export type AnalyticsSubTab = 'trends' | 'vulnerabilities' | 'dependencies' | 'action-plan';
 
 const SUB_TABS: { id: AnalyticsSubTab; label: string }[] = [
   { id: 'trends', label: 'Trends' },
   { id: 'vulnerabilities', label: 'Vulnerabilities' },
   { id: 'dependencies', label: 'Dependencies' },
-  { id: 'fix-plan', label: 'Fix Plan' },
+  { id: 'action-plan', label: 'Action Plan' },
 ];
 
 type AnalyticsTabProps = {
   history: HistoryState & { reload: () => Promise<void> };
   vulnDep: VulnDepState & { reload: () => Promise<void> };
-  fixAdvisor: FixAdvisorState & { reload: () => Promise<void> };
+  actionPlan: { data: ActionPlanEntry[]; loading: boolean; error: string | null; reload: () => Promise<void> };
   activeSubTab: AnalyticsSubTab;
   onSubTabChange: (tab: AnalyticsSubTab) => void;
 };
@@ -32,7 +31,7 @@ type AnalyticsTabProps = {
 export function AnalyticsTab({
   history,
   vulnDep,
-  fixAdvisor,
+  actionPlan,
   activeSubTab,
   onSubTabChange,
 }: AnalyticsTabProps) {
@@ -100,13 +99,12 @@ export function AnalyticsTab({
         </>
       )}
 
-      {/* Fix Plan sub-tab */}
-      {activeSubTab === 'fix-plan' && (
-        <FixPlanTable
-          data={fixAdvisor.data}
-          loading={fixAdvisor.loading}
-          error={fixAdvisor.error}
-          showRepos
+      {/* Action Plan sub-tab */}
+      {activeSubTab === 'action-plan' && (
+        <ActionPlanTable
+          data={actionPlan.data}
+          loading={actionPlan.loading}
+          error={actionPlan.error}
         />
       )}
     </>

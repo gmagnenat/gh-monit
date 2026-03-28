@@ -253,6 +253,25 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: 4,
+    up: (db) => {
+      db.exec(
+        [
+          "CREATE TABLE IF NOT EXISTS dependency_chain (",
+          "  repo TEXT NOT NULL,",
+          "  vulnerable_package TEXT NOT NULL,",
+          "  direct_dependency TEXT NOT NULL,",
+          "  direct_version TEXT,",
+          "  chain_depth INTEGER NOT NULL DEFAULT 0,",
+          "  updated_at TEXT NOT NULL,",
+          "  PRIMARY KEY (repo, vulnerable_package)",
+          ");",
+          "CREATE INDEX IF NOT EXISTS idx_chain_direct ON dependency_chain(direct_dependency);",
+        ].join("\n")
+      );
+    },
+  },
 ];
 
 // --- Database setup ---
@@ -279,7 +298,7 @@ export function openDatabase(dbPath: string): Database.Database {
 
 /** Deletes all alert and sync data, leaving the schema intact. */
 export function clearDatabase(db: Database.Database): void {
-  db.exec('DELETE FROM alert_history; DELETE FROM alerts; DELETE FROM repo_sync;');
+  db.exec('DELETE FROM alert_history; DELETE FROM alerts; DELETE FROM repo_sync; DELETE FROM dependency_chain;');
 }
 
 /** Removes all data for a single tracked repository. */
@@ -288,6 +307,7 @@ export function removeRepo(db: Database.Database, fullName: string): void {
     db.prepare('DELETE FROM alert_history WHERE repo = ?').run(fullName);
     db.prepare('DELETE FROM alerts WHERE repo = ?').run(fullName);
     db.prepare('DELETE FROM repo_sync WHERE repo = ?').run(fullName);
+    db.prepare('DELETE FROM dependency_chain WHERE repo = ?').run(fullName);
   })();
 }
 
@@ -889,6 +909,97 @@ export function getFixAdvisor(
     actions,
     noFixAvailable,
   };
+}
+
+// --- Dependency chain ---
+
+import type { DependencyChain } from './lockfile.js';
+
+const CHAIN_FIELDS = [
+  "repo",
+  "vulnerablePackage",
+  "directDependency",
+  "directVersion",
+  "chainDepth",
+  "updatedAt",
+];
+
+/**
+ * Saves dependency chain mappings for a repo.
+ * Upserts so re-syncs update existing rows.
+ */
+export function saveDependencyChains(
+  db: Database.Database,
+  repo: string,
+  chains: DependencyChain[]
+): void {
+  const stmt = db.prepare(
+    buildUpsert("dependency_chain", CHAIN_FIELDS, ["repo", "vulnerablePackage"])
+  );
+
+  const now = new Date().toISOString();
+  const transaction = db.transaction(() => {
+    // Clear old chains for this repo before saving new ones
+    db.prepare("DELETE FROM dependency_chain WHERE repo = ?").run(repo);
+
+    for (const chain of chains) {
+      stmt.run({ ...chain, updatedAt: now });
+    }
+  });
+
+  transaction();
+}
+
+const actionPlanRowSchema = z.object({
+  directDependency: z.string(),
+  directVersion: z.string().nullable(),
+  criticalAlerts: z.number(),
+  highAlerts: z.number(),
+  totalAlerts: z.number(),
+  affectedRepos: z.number(),
+  repos: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+  vulnerablePackages: z
+    .string()
+    .nullable()
+    .transform((s) => (s ? [...new Set(s.split(","))] : [])),
+});
+
+export type ActionPlanEntry = {
+  directDependency: string;
+  directVersion: string | null;
+  criticalAlerts: number;
+  highAlerts: number;
+  totalAlerts: number;
+  affectedRepos: number;
+  repos: string[];
+  vulnerablePackages: string[];
+};
+
+/**
+ * Returns an action plan: direct dependencies to update, ranked by
+ * how many critical+high alerts they would eliminate.
+ */
+export function getActionPlan(db: Database.Database): ActionPlanEntry[] {
+  return queryAll(
+    db,
+    [
+      "SELECT dc.direct_dependency, dc.direct_version,",
+      "  SUM(CASE WHEN LOWER(a.severity) = 'critical' THEN 1 ELSE 0 END) AS critical_alerts,",
+      "  SUM(CASE WHEN LOWER(a.severity) = 'high' THEN 1 ELSE 0 END) AS high_alerts,",
+      "  COUNT(*) AS total_alerts,",
+      "  COUNT(DISTINCT a.repo) AS affected_repos,",
+      "  GROUP_CONCAT(DISTINCT a.repo) AS repos,",
+      "  GROUP_CONCAT(DISTINCT a.package_name) AS vulnerable_packages",
+      "FROM dependency_chain dc",
+      "JOIN alerts a ON a.repo = dc.repo AND a.package_name = dc.vulnerable_package AND a.state = 'open'",
+      "GROUP BY dc.direct_dependency",
+      "ORDER BY critical_alerts DESC, high_alerts DESC, total_alerts DESC",
+    ].join(" "),
+    actionPlanRowSchema
+  );
 }
 
 /**
