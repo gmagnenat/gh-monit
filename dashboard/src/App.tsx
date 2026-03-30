@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDashboard } from './hooks/useDashboard';
-import { useCrossRepoFixAdvisor, useRepoFixAdvisor } from './hooks/useFixAdvisor';
+import { useActionPlan } from './hooks/useActionPlan';
+import { useRepoFixAdvisor } from './hooks/useFixAdvisor';
 import { useAlertTimeline, useHistory, useVulnDep } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
 import { useSetupWizard } from './hooks/useSetupWizard';
@@ -16,7 +17,7 @@ import { TabNav } from './components/TabNav';
 import { deleteRepo, filterReposByName, filterReposBySeverity, sortRepos } from './api/client';
 
 type Tab = 'repos' | 'analytics';
-type AnalyticsSubTab = 'trends' | 'vulnerabilities' | 'dependencies' | 'fix-plan';
+import type { AnalyticsSubTab } from './components/AnalyticsTab';
 
 const MAIN_TABS: { id: Tab; label: string }[] = [
   { id: 'repos', label: 'Repos' },
@@ -47,8 +48,8 @@ function NormalDashboard({
         analyticsSubTab === 'dependencies')
   );
 
-  const crossRepoFixAdvisor = useCrossRepoFixAdvisor(
-    activeTab === 'analytics' && analyticsSubTab === 'fix-plan'
+  const actionPlan = useActionPlan(
+    activeTab === 'analytics' && analyticsSubTab === 'action-plan'
   );
   const repoFixAdvisor = useRepoFixAdvisor(dashboard.selectedRepo);
 
@@ -137,7 +138,7 @@ function NormalDashboard({
             <AnalyticsTab
               history={history}
               vulnDep={vulnDep}
-              fixAdvisor={crossRepoFixAdvisor}
+              actionPlan={actionPlan}
               activeSubTab={analyticsSubTab}
               onSubTabChange={setAnalyticsSubTab}
             />
