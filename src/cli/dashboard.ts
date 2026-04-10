@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
@@ -18,9 +19,36 @@ const DEFAULT_CRON_SCHEDULE = '0 6 * * *';
 
 type DashboardOptions = {
   port: string;
+  host: string;
   open: boolean;
   db: string;
 };
+
+/**
+ * Returns true if the bind address is a wildcard that accepts any
+ * incoming interface (0.0.0.0 for IPv4, :: for IPv6).
+ */
+function isWildcardHost(host: string): boolean {
+  return host === '0.0.0.0' || host === '::';
+}
+
+/**
+ * Returns the external IPv4 addresses the host is reachable at,
+ * used to print helpful LAN URLs when binding to a wildcard address.
+ */
+function getLanAddresses(): string[] {
+  const nets = os.networkInterfaces();
+  const addresses: string[] = [];
+  for (const ifaces of Object.values(nets)) {
+    if (!ifaces) continue;
+    for (const iface of ifaces) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        addresses.push(iface.address);
+      }
+    }
+  }
+  return addresses;
+}
 
 /**
  * Resolves the dashboard static directory.
@@ -74,6 +102,11 @@ export function registerDashboardCommand(program: Command): void {
     .command('dashboard')
     .description('Start the web dashboard to browse Dependabot alerts')
     .option('--port <number>', 'Port to listen on', '3847')
+    .option(
+      '--host <address>',
+      'Host/interface to bind to (use 0.0.0.0 to expose on the LAN)',
+      '127.0.0.1'
+    )
     .option('--no-open', 'Skip opening the browser automatically')
     .option('--db <path>', 'Path to sqlite db', DEFAULT_DB_PATH)
     .action((options: DashboardOptions) => {
@@ -106,14 +139,33 @@ export function registerDashboardCommand(program: Command): void {
       }
 
       const app = createServer(db, octokit, dashboardDir);
-      const url = `http://localhost:${port}`;
+      const host = options.host;
+      const wildcard = isWildcardHost(host);
+      // Wildcard binds aren't clickable URLs — use localhost for the
+      // primary display/auto-open, and list LAN addresses separately.
+      const primaryUrl = `http://${wildcard ? 'localhost' : host}:${port}`;
 
       const cronExpression =
         process.env.GH_MONIT_REFRESH_SCHEDULE || DEFAULT_CRON_SCHEDULE;
 
-      const server = serve({ fetch: app.fetch, port }, () => {
+      const server = serve({ fetch: app.fetch, port, hostname: host }, () => {
         console.log(chalk.bold('\n  gh-monit Dashboard\n'));
-        console.log(`  ${chalk.green('➜')}  ${chalk.cyan(url)}\n`);
+        console.log(`  ${chalk.green('➜')}  Local:   ${chalk.cyan(primaryUrl)}`);
+        if (wildcard) {
+          const lan = getLanAddresses();
+          if (lan.length === 0) {
+            console.log(
+              `  ${chalk.green('➜')}  Network: ${chalk.gray('no external interfaces found')}`
+            );
+          } else {
+            for (const addr of lan) {
+              console.log(
+                `  ${chalk.green('➜')}  Network: ${chalk.cyan(`http://${addr}:${port}`)}`
+              );
+            }
+          }
+        }
+        console.log('');
 
         startScheduler(db, octokit, cronExpression);
         console.log(
@@ -123,7 +175,7 @@ export function registerDashboardCommand(program: Command): void {
         console.log(chalk.gray('  Press Ctrl+C to stop\n'));
 
         if (options.open) {
-          openBrowser(url);
+          openBrowser(primaryUrl);
         }
 
       });
