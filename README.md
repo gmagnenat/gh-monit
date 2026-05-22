@@ -37,12 +37,12 @@ gh-monit uses the GitHub REST API directly via [Octokit](https://github.com/octo
 
 2. Install dependencies:
    ```bash
-   npm install
+   pnpm install
    ```
 
 3. Build the project:
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 ## Usage
@@ -51,7 +51,7 @@ gh-monit uses the GitHub REST API directly via [Octokit](https://github.com/octo
 
 ```bash
 # Development
-npm run dev -- dependabot [options]
+pnpm run dev -- dependabot [options]
 
 # Production (after build)
 gh-monit dependabot [options]
@@ -113,19 +113,19 @@ Start the web dashboard to browse alerts visually.
 
 ```bash
 # Monitor a specific repository
-npm run dev -- dependabot --repo owner/repo --refresh
+pnpm run dev -- dependabot --repo owner/repo --refresh
 
 # Monitor all repositories for a user
-npm run dev -- dependabot --user your-username
+pnpm run dev -- dependabot --user your-username
 
 # Monitor an organization and include forks
-npm run dev -- dependabot --org my-org --include-forks
+pnpm run dev -- dependabot --org my-org --include-forks
 
 # Get alerts updated since a specific date in JSON format
-npm run dev -- dependabot --user your-username --since 2023-10-01 --json
+pnpm run dev -- dependabot --user your-username --since 2023-10-01 --json
 
 # Start the dashboard
-npm run dev -- dashboard
+pnpm run dev -- dashboard
 ```
 
 ## Docker
@@ -265,11 +265,11 @@ The CLI interacts with the GitHub REST API to retrieve Dependabot alerts. To avo
 
 ## Development
 
-- `npm run dev`: Run the CLI in development mode using `tsx`.
-- `npm run build`: Build both the dashboard and CLI for production.
-- `npm run build:cli`: Build only the CLI backend.
-- `npm run build:dashboard`: Build only the dashboard frontend.
-- `npm run lint`: Type-check the codebase.
+- `pnpm run dev`: Run the CLI in development mode using `tsx`.
+- `pnpm run build`: Build both the dashboard and CLI for production.
+- `pnpm run build:cli`: Build only the CLI backend.
+- `pnpm run build:dashboard`: Build only the dashboard frontend.
+- `pnpm run lint`: Type-check the codebase.
 
 ## Requirements
 
