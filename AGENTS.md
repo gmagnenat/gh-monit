@@ -106,10 +106,10 @@ Three tables in SQLite (`~/.gh-monit/gh-monit.db` by default):
 
 | Script        | Command            | Purpose                              |
 | ------------- | ------------------ | ------------------------------------ |
-| `npm run dev` | `tsx src/index.ts`  | Run CLI in development (no build)    |
-| `npm run build` | `tsup`           | Bundle to `dist/` for production     |
-| `npm run lint` | `tsc --noEmit`    | Type-check without emitting files    |
-| `npm run test` | *(not configured)* | Placeholder — tests not yet written |
+| `pnpm run dev` | `tsx src/index.ts`  | Run CLI in development (no build)    |
+| `pnpm run build` | `tsup`           | Bundle to `dist/` for production     |
+| `pnpm run lint` | `tsc --noEmit`    | Type-check without emitting files    |
+| `pnpm run test` | *(not configured)* | Placeholder — tests not yet written |
 
 ## Adding a New Command
 

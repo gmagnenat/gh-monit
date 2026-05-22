@@ -69,7 +69,7 @@ Store opt-in config in the `settings` table (from suggestion 2).
 ---
 
 ### 9. Test Suite Foundation
-**Problem:** `npm test` echoes "No tests yet". MTTR computation, SLA violation detection, alert normalization, and the `saveAlerts()` transaction are all business-critical and unprotected.
+**Problem:** `pnpm test` echoes "No tests yet". MTTR computation, SLA violation detection, alert normalization, and the `saveAlerts()` transaction are all business-critical and unprotected.
 
 **Fix:** Add `vitest`. Use `better-sqlite3` in-memory mode (`:memory:`) — the migration system already handles schema creation, so no mocking needed. Priority test targets:
 - `normalizeAlerts()` with fixture payloads

@@ -20,6 +20,7 @@ wcag.csv
 node_modules
 dist
 dashboard/node_modules
+package-lock.json
 .todos/
 .sidecar-agent
 .sidecar-task
